@@ -1,19 +1,12 @@
-FROM python:3.10.5
+FROM python:3.11-slim
 
-# Устанавливаем зависимости для вашего проекта
-COPY requirements.txt /diwibot/app/
-RUN pip install --no-cache-dir -r /diwibot/app/requirements.txt
+WORKDIR /app
 
-# Копируем исходный код проекта в Docker-образ
-COPY . /diwibot/app
+RUN apt-get update && apt-get install -y ffmpeg && apt-get clean
 
-# Задаем рабочую директорию
-WORKDIR /diwibot/app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Указываем порты, которые будут прослушиваться внутри контейнера
-EXPOSE 8080
+COPY monitor.py /app/monitor.py
 
-# Команда для запуска main.py
-CMD ["python", "main.py"]
-#CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
-
+ENTRYPOINT ["python", "/app/monitor.py"]
