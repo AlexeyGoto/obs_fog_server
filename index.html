@@ -20,12 +20,11 @@
 <body>
   <header><h1>Активные стримы (до 10)</h1></header>
   <div class="grid" id="grid"></div>
-  <footer>Подключайте OBS к <code>rtmp://&lt;ваш_домен_или_IP&gt;/live/&lt;ключ&gt;</code>. Ключи ниже.</footer>
+  <footer>OBS: <code>rtmp://&lt;домен_или_IP&gt;/live/&lt;ключ&gt;</code>. Ключи ниже.</footer>
 
   <script src="https://cdn.jsdelivr.net/npm/hls.js@1.4.0"></script>
   <script>
-    // ЗАДАЙТЕ ваши ключи стримов (имя = подпись, key = RTMP ключ = имя потока $name)
-    // Можно оставить меньше/больше пунктов, но разумно до 10.
+    // Задай свои ключи (имя стрима = RTMP ключ = $name)
     const STREAMS = [
       { name: "PC-1", key: "pc1" },
       { name: "PC-2", key: "pc2" },
@@ -41,7 +40,7 @@
 
     const grid = document.getElementById('grid');
 
-    STREAMS.forEach((s, idx) => {
+    STREAMS.forEach((s) => {
       const card = document.createElement('div');
       card.className = 'card';
       const title = document.createElement('div');
@@ -52,15 +51,15 @@
       video.setAttribute('muted', '');
       video.setAttribute('autoplay', '');
       video.setAttribute('playsinline', '');
-
       card.appendChild(title);
       card.appendChild(video);
       grid.appendChild(card);
 
-      const src = `/hls/${s.key}.m3u8`;
+      // ВАЖНО: при hls_nested on используем /hls/<key>/index.m3u8
+      const src = `/hls/${encodeURIComponent(s.key)}/index.m3u8`;
 
       const setOffline = () => {
-        card.removeChild(video);
+        if (video.parentElement) video.parentElement.removeChild(video);
         const off = document.createElement('div');
         off.className = 'offline';
         off.textContent = `${s.name}: offline`;
@@ -72,7 +71,7 @@
         hls.loadSource(src);
         hls.attachMedia(video);
         hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(()=>{}));
-        hls.on(Hls.Events.ERROR, (e, data) => {
+        hls.on(Hls.Events.ERROR, (_e, data) => {
           if (data?.type === Hls.ErrorTypes.NETWORK_ERROR) {
             hls.destroy();
             setOffline();
