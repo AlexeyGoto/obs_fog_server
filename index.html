@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <title>Live Streams</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root { --bg:#111; --fg:#eee; --card:#1b1b1b; --muted:#8a8a8a; }
+    body { margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu; background:var(--bg); color:var(--fg); }
+    header { padding:12px 16px; background:#000; border-bottom:1px solid #222; }
+    h1 { font-size:18px; margin:0; }
+    .grid { display:grid; gap:12px; padding:12px; grid-template-columns: repeat(auto-fill, minmax(320px,1fr)); }
+    .card { background:var(--card); border:1px solid #222; border-radius:14px; padding:10px; }
+    .title { font-size:14px; margin:0 0 8px; color:#ddd; }
+    video { width:100%; height:auto; background:#000; border-radius:10px; }
+    .offline { color:var(--muted); padding:24px 8px; text-align:center; border:1px dashed #333; border-radius:10px; }
+    footer { color:#aaa; font-size:12px; padding:8px 16px 16px; }
+  </style>
+</head>
+<body>
+  <header><h1>Активные стримы (до 10)</h1></header>
+  <div class="grid" id="grid"></div>
+  <footer>Подключайте OBS к <code>rtmp://&lt;ваш_домен_или_IP&gt;/live/&lt;ключ&gt;</code>. Ключи ниже.</footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.4.0"></script>
+  <script>
+    // ЗАДАЙТЕ ваши ключи стримов (имя = подпись, key = RTMP ключ = имя потока $name)
+    // Можно оставить меньше/больше пунктов, но разумно до 10.
+    const STREAMS = [
+      { name: "PC-1", key: "pc1" },
+      { name: "PC-2", key: "pc2" },
+      { name: "PC-3", key: "pc3" },
+      { name: "PC-4", key: "pc4" },
+      { name: "PC-5", key: "pc5" },
+      { name: "PC-6", key: "pc6" },
+      { name: "PC-7", key: "pc7" },
+      { name: "PC-8", key: "pc8" },
+      { name: "PC-9", key: "pc9" },
+      { name: "PC-10", key: "pc10" }
+    ];
+
+    const grid = document.getElementById('grid');
+
+    STREAMS.forEach((s, idx) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      const title = document.createElement('div');
+      title.className = 'title';
+      title.textContent = `${s.name} — ключ: ${s.key}`;
+      const video = document.createElement('video');
+      video.setAttribute('controls', '');
+      video.setAttribute('muted', '');
+      video.setAttribute('autoplay', '');
+      video.setAttribute('playsinline', '');
+
+      card.appendChild(title);
+      card.appendChild(video);
+      grid.appendChild(card);
+
+      const src = `/hls/${s.key}.m3u8`;
+
+      const setOffline = () => {
+        card.removeChild(video);
+        const off = document.createElement('div');
+        off.className = 'offline';
+        off.textContent = `${s.name}: offline`;
+        card.appendChild(off);
+      };
+
+      if (Hls.isSupported()) {
+        const hls = new Hls({ liveBackBufferLength: 0 });
+        hls.loadSource(src);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => video.play().catch(()=>{}));
+        hls.on(Hls.Events.ERROR, (e, data) => {
+          if (data?.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            hls.destroy();
+            setOffline();
+          }
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = src;
+        video.addEventListener('error', setOffline, { once:true });
+        video.play().catch(()=>{});
+      } else {
+        setOffline();
+      }
+    });
+  </script>
+</body>
+</html>
