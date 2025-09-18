@@ -10,11 +10,9 @@ RUN apt-get update && apt-get install -y \
 # Конфиг Nginx (HTTP + RTMP)
 COPY nginx.conf /etc/nginx/nginx.conf
 
-# Скрипты
+# Скрипты и веб
 COPY on_stream_done.sh /app/on_stream_done.sh
 COPY entrypoint.sh /entrypoint.sh
-
-# Веб-страница
 COPY index.html /usr/share/nginx/html/index.html
 
 # Папки под HLS и итоговые видео
@@ -28,11 +26,17 @@ RUN htpasswd -b -c /etc/nginx/htpasswd admin admin
 RUN ln -sf /dev/stdout /var/log/nginx/access.log \
  && ln -sf /dev/stderr /var/log/nginx/error.log
 
-# Права на скрипты
-RUN chmod +x /app/on_stream_done.sh /entrypoint.sh
+# Права на скрипты: исполняемы для всех (www-data запустит exec_*), entrypoint — исполняемый
+RUN chmod 755 /app/on_stream_done.sh /entrypoint.sh
+
+# Быстрая проверка конфига на этапе сборки
+RUN nginx -t
 
 # Порты
 EXPOSE 80 1935
 
-# Запускаем через entrypoint (он настроит пароль, ulimit и стартует nginx)
+# Healthcheck без авторизации
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 CMD curl -fsS http://localhost/healthz || exit 1
+
+# Запуск через entrypoint (он настроит пароль, ulimit и стартует nginx в foreground)
 ENTRYPOINT ["/entrypoint.sh"]

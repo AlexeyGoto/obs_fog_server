@@ -12,11 +12,11 @@ else
   echo "[entrypoint] Using default basic auth (admin/admin). CHANGE IT via env!"
 fi
 
-# Проверим наличие критичных каталогов и права
+# Проверим каталоги и права (www-data должен иметь запись)
 mkdir -p /tmp/hls /var/videos
 chown -R www-data:www-data /tmp/hls /var/videos
 
 echo "[entrypoint] BOT_TOKEN: ${BOT_TOKEN:+set}, CHAT_ID: ${CHAT_ID:+set}, BASE_URL: ${BASE_URL:-<not set>}"
 
-# Запуск Nginx в foreground
+# Старт nginx в foreground
 nginx -g 'daemon off;'

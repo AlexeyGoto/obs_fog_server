@@ -54,6 +54,7 @@
       card.appendChild(video);
       grid.appendChild(card);
 
+      // ВАЖНО: при hls_nested on используем /hls/<key>/index.m3u8
       const src = `/hls/${encodeURIComponent(s.key)}/index.m3u8`;
 
       const setOffline = () => {
