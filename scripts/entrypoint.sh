@@ -1,45 +1,30 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# --- ENV, дефолты ---
 STREAM_KEYS="${STREAM_KEYS:-}"
 BOT_TOKEN="${BOT_TOKEN:-}"
 CHAT_ID="${CHAT_ID:-}"
 PUBLIC_HOST="${PUBLIC_HOST:-}"
 SEG_TIME="${SEG_TIME:-5}"
-RECORD_SEGMENTS="${RECORD_SEGMENTS:-84}"   # 7 минут = 84*5
+RECORD_SEGMENTS="${RECORD_SEGMENTS:-84}"
 
-if [ -z "$STREAM_KEYS" ]; then
-  echo "ERROR: STREAM_KEYS is required (comma-separated)" >&2
-  exit 1
-fi
+[ -n "$STREAM_KEYS" ] || { echo "ERROR: STREAM_KEYS is required"; exit 1; }
 
-# лимит файловых дескрипторов: известный фикс для exec в Docker
+# фикс для exec в Docker (иначе бывают залипания процессов)
 ulimit -n 1024 || true
 
-# Пытаемся определить публичный хост, если не задан
 detect_public_host() {
   if [ -n "$PUBLIC_HOST" ]; then
-    echo "$PUBLIC_HOST"
-    return
+    echo "$PUBLIC_HOST"; return
   fi
-  # попытка получить внешний IP
   PH="$(curl -fsS --max-time 3 http://ifconfig.me || true)"
-  if [ -n "$PH" ]; then
-    echo "$PH"
-  else
-    # последний шанс — IP контейнера (часто не публичный, но лучше, чем пусто)
-    hostname -i | awk '{print $1}'
-  fi
+  if [ -n "$PH" ]; then echo "$PH"; else hostname -i | awk '{print $1}'; fi
 }
 PHOST="$(detect_public_host)"
 echo "PUBLIC HOST: $PHOST"
 
-# Подготовка директорий
 mkdir -p /var/hls /var/hls_rec /tmp/videos /app/obs_profiles
-chown -R nginx:nginx /var/hls /var/hls_rec /tmp/videos /app/obs_profiles
 
-# Генерация index.html из списка ключей
 IFS=',' read -r -a KEYS <<< "$STREAM_KEYS"
 {
   cat <<'HTML_HEAD'
@@ -65,8 +50,7 @@ IFS=',' read -r -a KEYS <<< "$STREAM_KEYS"
 HTML_HEAD
 
   for KEY in "${KEYS[@]}"; do
-    KTRIM="$(echo "$KEY" | xargs)"
-    [ -z "$KTRIM" ] && continue
+    KTRIM="$(echo "$KEY" | xargs)"; [ -z "$KTRIM" ] && continue
     cat <<HTML_TILE
     <div class="tile">
       <div class="title">Ключ: <code>${KTRIM}</code></div>
@@ -87,15 +71,12 @@ HTML_TAIL
 
 echo "Generated /app/www/index.html"
 
-# Создание и отправка OBS-профилей для каждого ключа
 make_and_send_profile() {
   local KEY="$1"
   local PROF="LowVPS-RTMP-${KEY}"
   local DIR="/app/obs_profiles/${PROF}"
   mkdir -p "$DIR"
 
-  # Настройки профиля OBS (минимально необходимое)
-  # 854x480@30fps; CBR 500 kbps; keyframe=2s; custom RTMP server+key
   cat > "$DIR/basic.ini" <<EOF
 [General]
 Name=${PROF}
@@ -124,7 +105,6 @@ FPSType=Simple
 FPSCommon=30
 EOF
 
-  # Custom RTMP service
   cat > "$DIR/service.json" <<EOF
 {
   "type": "rtmp_custom",
@@ -138,8 +118,8 @@ EOF
 }
 EOF
 
-  # Упаковываем zip и шлём в Telegram
   (cd /app/obs_profiles && zip -rq "${PROF}.zip" "${PROF}")
+
   if [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ]; then
     curl -s -F "chat_id=${CHAT_ID}" \
          -F "document=@/app/obs_profiles/${PROF}.zip" \
@@ -147,18 +127,15 @@ EOF
          "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" >/dev/null 2>&1 || true
     echo "Sent OBS profile for ${KEY} to Telegram"
   else
-    echo "BOT_TOKEN/CHAT_ID not set; profile kept at /app/obs_profiles/${PROF}.zip"
+    echo "BOT_TOKEN/CHAT_ID not set; profile at /app/obs_profiles/${PROF}.zip"
   fi
 }
 
 for KEY in "${KEYS[@]}"; do
-  KTRIM="$(echo "$KEY" | xargs)"
-  [ -z "$KTRIM" ] && continue
+  KTRIM="$(echo "$KEY" | xargs)"; [ -z "$KTRIM" ] && continue
   make_and_send_profile "$KTRIM"
 done
 
-# Передадим env в скрипты записи (через файлы/переменные)
 export SEG_TIME RECORD_SEGMENTS BOT_TOKEN CHAT_ID
-
 echo "Starting nginx..."
 exec nginx -g 'daemon off;'

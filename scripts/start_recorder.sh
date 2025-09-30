@@ -1,10 +1,10 @@
 ﻿#!/usr/bin/env bash
-# Запускается при старте стрима: /app/start_recorder.sh <KEY>
+# /app/start_recorder.sh <KEY>
 set -euo pipefail
 KEY="$1"
 
 SEG_TIME="${SEG_TIME:-5}"
-LIST_SIZE="${RECORD_SEGMENTS:-84}"   # сколько сегментов держать (7 мин)
+LIST_SIZE="${RECORD_SEGMENTS:-84}"
 
 SAFE_KEY="$(printf '%s' "$KEY" | tr -cd 'A-Za-z0-9._-')"
 [ -n "$SAFE_KEY" ] || SAFE_KEY="stream_$(date +%s)"
@@ -17,11 +17,10 @@ LOG="$DIR/rec.log"
 trim_log_if_big(){ [ -f "$LOG" ] || return 0; local sz; sz=$(stat -c%s "$LOG" 2>/dev/null||echo 0); [ "$sz" -ge $((10*1024*1024)) ] && : > "$LOG" || true; }
 
 mkdir -p "$DIR"
-chown -R nginx:nginx "$DIR"
 : > "$LOG"
 date +%s > "$START"
 
-# если уже висит — выходим
+# уже запущен?
 if [ -f "$PID" ]; then
   P=$(cat "$PID" 2>/dev/null || true)
   if [ -n "${P:-}" ] && kill -0 "$P" 2>/dev/null; then
@@ -33,10 +32,9 @@ if [ -f "$PID" ]; then
 fi
 
 # чистим старое
-rm -f "$DIR"/*.ts "$DIR"/*.m3u8" 2>/dev/null || true
+rm -f "$DIR"/*.ts "$DIR"/*.m3u8 2>/dev/null || true
 
-# ffmpeg пишем HLS-кольцо (copy-only — минимум CPU)
-# NB: запускаем в фоне, PID сохраняем — stop-скрипт сам завершит процесс
+# ffmpeg: HLS-кольцо (copy-only, минимум CPU)
 nohup ffmpeg -hide_banner -loglevel warning -nostats \
   -i "rtmp://127.0.0.1:1935/live/${KEY}" \
   -c copy \

@@ -4,6 +4,7 @@ KEY="${1:?stream key required}"
 PHOST="${2:-localhost}"
 OUTDIR="/app/obs_profiles/LowVPS-RTMP-${KEY}"
 mkdir -p "$OUTDIR"
+
 cat > "$OUTDIR/basic.ini" <<EOF
 [General]
 Name=LowVPS-RTMP-${KEY}
