@@ -1,61 +1,53 @@
 ﻿#!/usr/bin/env bash
-# Invoked by nginx-rtmp: exec_publish /usr/local/bin/start_recorder.sh $app $name
+# Запускается при старте стрима: /app/start_recorder.sh <KEY>
 set -euo pipefail
+KEY="$1"
 
-APP="$1"
-STREAM="$2"
+SEG_TIME="${SEG_TIME:-5}"
+LIST_SIZE="${RECORD_SEGMENTS:-84}"   # сколько сегментов держать (7 мин)
 
-# Sanitize stream name to safe characters only
-SAFE_STREAM="$(printf '%s' "$STREAM" | tr -cd 'A-Za-z0-9._-')"
-[[ -n "$SAFE_STREAM" ]] || SAFE_STREAM="stream_$(date +%s)"
+SAFE_KEY="$(printf '%s' "$KEY" | tr -cd 'A-Za-z0-9._-')"
+[ -n "$SAFE_KEY" ] || SAFE_KEY="stream_$(date +%s)"
 
-RECROOT="/var/hls_rec"
-STREAM_DIR="$RECROOT/$SAFE_STREAM"
+DIR="/var/hls_rec/${SAFE_KEY}"
+PID="/var/run/rec-${SAFE_KEY}.pid"
+START="/var/run/rec-${SAFE_KEY}.start"
+LOG="$DIR/rec.log"
 
-PIDFILE="/var/run/rec-${SAFE_STREAM}.pid"
-STARTFILE="/var/run/rec-${SAFE_STREAM}.start"
-FFLOG="$STREAM_DIR/rec.log"
+trim_log_if_big(){ [ -f "$LOG" ] || return 0; local sz; sz=$(stat -c%s "$LOG" 2>/dev/null||echo 0); [ "$sz" -ge $((10*1024*1024)) ] && : > "$LOG" || true; }
 
-# Recorder window and HLS segment sizing
-: "${RECORDER_WINDOW_SECONDS:=300}"
-: "${HLS_SEGMENT_SECONDS:=2}"
-LIST_SIZE=$(( RECORDER_WINDOW_SECONDS / HLS_SEGMENT_SECONDS ))
-[[ $LIST_SIZE -lt 5 ]] && LIST_SIZE=5
+mkdir -p "$DIR"
+chown -R nginx:nginx "$DIR"
+: > "$LOG"
+date +%s > "$START"
 
-MAX_LOG_BYTES=$((10*1024*1024))
-trim_log(){ local f="$1"; [[ -f "$f" ]] || return 0; local s; s=$(stat -c%s "$f" 2>/dev/null || echo 0); [[ $s -ge $MAX_LOG_BYTES ]] && : > "$f" || true; }
-log(){ echo "$(date '+%F %T') [start] $*" >> "$FFLOG"; trim_log "$FFLOG"; }
-
-mkdir -p "$STREAM_DIR"
-: > "$FFLOG"
-
-# Abort if a recorder is already running
-if [[ -f "$PIDFILE" ]]; then
-  PID=$(cat "$PIDFILE" 2>/dev/null || echo "")
-  if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
-    log "recorder already running for $STREAM (PID=$PID)"; exit 0
+# если уже висит — выходим
+if [ -f "$PID" ]; then
+  P=$(cat "$PID" 2>/dev/null || true)
+  if [ -n "${P:-}" ] && kill -0 "$P" 2>/dev/null; then
+    echo "$(date '+%F %T') recorder already running for $SAFE_KEY (PID=$P)" >> "$LOG"
+    exit 0
   else
-    rm -f "$PIDFILE"
+    rm -f "$PID"
   fi
 fi
 
-# Remove leftovers from previous sessions
-rm -f "$STREAM_DIR"/*.ts "$STREAM_DIR"/*.m3u8 2>/dev/null || true
+# чистим старое
+rm -f "$DIR"/*.ts "$DIR"/*.m3u8" 2>/dev/null || true
 
-# Persist start timestamp (epoch)
-date +%s > "$STARTFILE"
-
-# Capture the RTMP stream into rolling HLS segments without re-encoding
-nohup ffmpeg -y -hide_banner -loglevel warning -nostats \
-  -i "rtmp://127.0.0.1/${APP}/${STREAM}" \
+# ffmpeg пишем HLS-кольцо (copy-only — минимум CPU)
+# NB: запускаем в фоне, PID сохраняем — stop-скрипт сам завершит процесс
+nohup ffmpeg -hide_banner -loglevel warning -nostats \
+  -i "rtmp://127.0.0.1:1935/live/${KEY}" \
   -c copy \
   -f hls \
-  -hls_time "$HLS_SEGMENT_SECONDS" \
+  -hls_time "$SEG_TIME" \
   -hls_list_size "$LIST_SIZE" \
   -hls_flags delete_segments+split_by_time \
-  -hls_segment_filename "$STREAM_DIR/${SAFE_STREAM}-%06d.ts" \
-  "$STREAM_DIR/${SAFE_STREAM}.m3u8" >> "$FFLOG" 2>&1 &
+  -hls_segment_filename "$DIR/${SAFE_KEY}-%06d.ts" \
+  "$DIR/${SAFE_KEY}.m3u8" >> "$LOG" 2>&1 &
 
-echo $! > "$PIDFILE"
-log "started (PID=$(cat "$PIDFILE"), list_size=${LIST_SIZE}, seg=${HLS_SEGMENT_SECONDS}s)"
+echo $! > "$PID"
+echo "$(date '+%F %T') started recorder for $SAFE_KEY (PID=$(cat "$PID"))" >> "$LOG"
+trim_log_if_big
 exit 0

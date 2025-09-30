@@ -1,213 +1,127 @@
 ﻿#!/usr/bin/env bash
-# Invoked by nginx-rtmp: exec_publish_done /usr/local/bin/stop_recorder_and_finalize.sh $app $name
+# Запускается при остановке стрима: /app/stop_recorder_and_finalize.sh <KEY>
 set -euo pipefail
+KEY="$1"
 
-APP="$1"
-STREAM="$2"
+BOT_TOKEN="${BOT_TOKEN:-}"
+CHAT_ID="${CHAT_ID:-}"
+SEG_TIME="${SEG_TIME:-5}"
+SEG_CNT="${RECORD_SEGMENTS:-84}"
 
-SAFE_STREAM="$(printf '%s' "$STREAM" | tr -cd 'A-Za-z0-9._-')"
-[[ -n "$SAFE_STREAM" ]] || SAFE_STREAM="stream_unknown"
+SAFE_KEY="$(printf '%s' "$KEY" | tr -cd 'A-Za-z0-9._-')"
+[ -n "$SAFE_KEY" ] || SAFE_KEY="stream_unknown"
 
-RECROOT="/var/hls_rec"
-STREAM_DIR="$RECROOT/$SAFE_STREAM"
-PIDFILE="/var/run/rec-${SAFE_STREAM}.pid"
-STARTFILE="/var/run/rec-${SAFE_STREAM}.start"
-FFLOG="$STREAM_DIR/rec.log"
-OUTPUT_DIR="/tmp/videos"
+DIR="/var/hls_rec/${SAFE_KEY}"
+PID="/var/run/rec-${SAFE_KEY}.pid"
+START="/var/run/rec-${SAFE_KEY}.start"
+LOG="$DIR/rec.log"
+OUT_DIR="/tmp/videos"
+mkdir -p "$OUT_DIR"
 
-# Telegram
-: "${BOT_TOKEN:=}"
-: "${CHAT_ID:=}"
+MAX_TG=$((50*1024*1024))   # 50MB
 
-mkdir -p "$OUTPUT_DIR" "$STREAM_DIR"
-: > "$FFLOG" || true
+trim_log_if_big(){ [ -f "$LOG" ] || return 0; local sz; sz=$(stat -c%s "$LOG" 2>/dev/null||echo 0); [ "$sz" -ge $((10*1024*1024)) ] && : > "$LOG" || true; }
+log(){ echo "$(date '+%F %T'): $*" >> "$LOG"; trim_log_if_big; }
+safe_send_msg(){ local text="$1"; [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ] && curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" --data-urlencode "chat_id=${CHAT_ID}" --data-urlencode "text=${text}" >/dev/null 2>&1 || true; }
 
-MAX_LOG_BYTES=$((10*1024*1024))
-trim_log(){ local f="$1"; [[ -f "$f" ]] || return 0; local s; s=$(stat -c%s "$f" 2>/dev/null || echo 0); [[ $s -ge $MAX_LOG_BYTES ]] && : > "$f" || true; }
-log(){ echo "$(date '+%F %T') [stop] $*" >> "$FFLOG"; trim_log "$FFLOG"; }
-
-# Stop ffmpeg if it is still running
-if [[ -f "$PIDFILE" ]]; then
-  PID=$(cat "$PIDFILE" 2>/dev/null || echo "")
-  if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
-    log "stopping recorder PID=$PID"
-    kill -INT "$PID"
-    for i in {1..10}; do kill -0 "$PID" 2>/dev/null || break; sleep 1; done
-    kill -0 "$PID" 2>/dev/null && { log "force kill $PID"; kill -9 "$PID" || true; }
+# останавливаем рекордер
+if [ -f "$PID" ]; then
+  P=$(cat "$PID" 2>/dev/null || true)
+  if [ -n "${P:-}" ] && kill -0 "$P" 2>/dev/null; then
+    log "stopping recorder PID $P"
+    kill -INT "$P" 2>/dev/null || true
+    for i in {1..10}; do kill -0 "$P" 2>/dev/null || break; sleep 1; done
+    kill -0 "$P" 2>/dev/null && { log "force kill $P"; kill -9 "$P" 2>/dev/null || true; }
   fi
-  rm -f "$PIDFILE"
+  rm -f "$PID"
 fi
 
 sleep 1; sync
 
-REC_M3U8="$STREAM_DIR/${SAFE_STREAM}.m3u8"
-if [[ ! -f "$REC_M3U8" ]]; then
-  log "playlist not found: $REC_M3U8"
-  if [[ -n "$BOT_TOKEN" && -n "$CHAT_ID" ]]; then
-    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-         --data-urlencode "chat_id=${CHAT_ID}" \
-         --data-urlencode "text=$(printf 'Stream: %s\nStart: -\nStop: -\n\nStream playlist not found.' "$STREAM")" >/dev/null || true
-  fi
-  rm -f "$STREAM_DIR"/*.ts 2>/dev/null || true
-  rmdir --ignore-fail-on-non-empty "$STREAM_DIR" 2>/dev/null || true
-  [[ -f "$STARTFILE" ]] && rm -f "$STARTFILE" || true
+# собираем последние SEG_CNT сегментов
+mapfile -t CANDS < <(ls -1 "$DIR"/"${SAFE_KEY}-"*.ts 2>/dev/null | sort -V | tail -n "$SEG_CNT")
+if [ "${#CANDS[@]}" -eq 0 ]; then
+  log "no segments found"
+  safe_send_msg "$(printf 'ПК: %s\nВремя начала: -\nВремя окончания: -\n\nЗапись не найдена.' "$KEY")"
+  rm -f "$DIR"/*.ts "$DIR"/*.m3u8" 2>/dev/null || true
+  rmdir --ignore-fail-on-non-empty "$DIR" 2>/dev/null || true
+  [ -f "$START" ] && rm -f "$START" || true
   exit 0
 fi
 
-# Build a list of actual segment files referenced by the playlist
-MAPFILE="$(mktemp)"
-awk 'BEGIN{FS="\r"} /^[^#]/ {print $1}' "$REC_M3U8" > "$MAPFILE"
-sed -i -e "s#^#${STREAM_DIR}/#; s#//#/#g" "$MAPFILE"
-awk 'system("[ -f \""$0"\" ]")==0{print}' "$MAPFILE" > "${MAPFILE}.ok" || true
-
-if [[ ! -s "${MAPFILE}.ok" ]]; then
-  log "no segments present per playlist"
-  if [[ -n "$BOT_TOKEN" && -n "$CHAT_ID" ]]; then
-    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-         --data-urlencode "chat_id=${CHAT_ID}" \
-         --data-urlencode "text=$(printf 'Stream: %s\nStart: -\nStop: -\n\nRecorded segments were not found.' "$STREAM")" >/dev/null || true
-  fi
-  rm -f "$MAPFILE" "${MAPFILE}.ok"
-  exit 0
-fi
-
-# Wait until the last segment is fully written to disk
-wait_settle(){
-  local f="$1" tries=16
-  while (( tries-- > 0 )); do
-    [[ -f "$f" ]] || { sleep 0.5; continue; }
-    local s1 s2; s1=$(stat -c%s "$f" 2>/dev/null || echo 0); sleep 0.7; s2=$(stat -c%s "$f" 2>/dev/null || echo 0)
-    [[ "$s1" -eq "$s2" && "$s2" -gt 0 ]] && { log "last settled: $(basename "$f") size=$s2"; return 0; }
+# ждём, чтобы последний файл «дозаписался»
+last="${CANDS[-1]}"
+if [ -n "$last" ]; then
+  tries=12
+  while [ $tries -gt 0 ]; do
+    s1=$(stat -c%s "$last" 2>/dev/null || echo 0); sleep 0.7
+    s2=$(stat -c%s "$last" 2>/dev/null || echo 0)
+    [ "$s1" -eq "$s2" ] && [ "$s2" -gt 0 ] && break
+    tries=$((tries-1))
   done
-  return 0
-}
+  log "last segment settled: $(basename "$last")"
+fi
 
-LAST_SEG="$(tail -n1 "${MAPFILE}.ok")"
-[[ -n "$LAST_SEG" ]] && wait_settle "$LAST_SEG"
-
-# Stage segments via hardlinks (fall back to copy on failure)
-STAGE_DIR="$(mktemp -d "/tmp/stage_${SAFE_STREAM}_XXXX")"
-nl -ba "${MAPFILE}.ok" | while read -r N P; do
-  printf -v FN "%06d.ts" "$N"
-  ln "$P" "$STAGE_DIR/$FN" 2>/dev/null || cp -p "$P" "$STAGE_DIR/$FN"
-done
-rm -f "$MAPFILE" "${MAPFILE}.ok"
-
-STAGE_LIST=$(ls -1 "$STAGE_DIR"/*.ts 2>/dev/null | sort -V || true)
-if [[ -z "${STAGE_LIST:-}" ]]; then
-  log "stage empty"
-  if [[ -n "$BOT_TOKEN" && -n "$CHAT_ID" ]]; then
-    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-         --data-urlencode "chat_id=${CHAT_ID}" \
-         --data-urlencode "text=$(printf 'Stream: %s\nStart: -\nStop: -\n\nSegments disappeared before processing.' "$STREAM")" >/dev/null || true
+# стаджим только те .ts, где есть видеотрек
+STAGE="$(mktemp -d "/tmp/stage_${SAFE_KEY}_XXXX")"
+idx=0
+for f in "${CANDS[@]}"; do
+  if ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 "$f" >/dev/null 2>&1; then
+    idx=$((idx+1)); printf -v FN "%06d.ts" "$idx"
+    ln "$f" "$STAGE/$FN" 2>/dev/null || cp -p "$f" "$STAGE/$FN"
   fi
-  rm -rf "$STAGE_DIR"
+done
+if [ "$idx" -eq 0 ]; then
+  log "all candidates audio-only"
+  safe_send_msg "$(printf 'ПК: %s\nВремя начала: -\nВремя окончания: -\n\nВо входных сегментах отсутствует видеоряд.' "$KEY")"
+  rm -rf "$STAGE"; rm -f "$DIR"/*.ts "$DIR"/*.m3u8" 2>/dev/null || true
+  rmdir --ignore-fail-on-non-empty "$DIR" 2>/dev/null || true
+  [ -f "$START" ] && rm -f "$START" || true
   exit 0
 fi
 
-# Drop trailing segments that do not contain video (for stalled encoders)
-has_video(){ ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 "$1" >/dev/null 2>&1; }
-LAST_WITH_VIDEO=""
-for f in $(echo "$STAGE_LIST" | tac); do
-  if has_video "$f"; then LAST_WITH_VIDEO="$f"; break; fi
-done
-if [[ -n "$LAST_WITH_VIDEO" ]]; then
-  STAGE_LIST=$(echo "$STAGE_LIST" | awk -v last="$LAST_WITH_VIDEO" '{print} $0==last {exit}')
-fi
+LIST="$STAGE/concat.txt"; : > "$LIST"
+for f in $(ls -1 "$STAGE"/*.ts | sort -V); do echo "file '$f'" >> "$LIST"; done
 
-LISTFILE="$STAGE_DIR/concat_list.txt"; : > "$LISTFILE"
-while IFS= read -r f; do echo "file '$f'" >> "$LISTFILE"; done <<< "$STAGE_LIST"
-
-FIRST_STAGED=$(echo "$STAGE_LIST" | head -n1)
-LAST_STAGED=$(echo "$STAGE_LIST" | tail -n1)
-
-# Resolve start/stop timestamps for notifications
-if [[ -f "$STARTFILE" ]]; then
-  START_TS=$(cat "$STARTFILE" 2>/dev/null || echo '')
-  if [[ -n "${START_TS:-}" ]]; then
-    START_FMT=$(date -d "@$START_TS" +"%d.%m.%Y %H.%M.%S")
-  else
-    START_FMT=$(date -r "$FIRST_STAGED" +"%d.%m.%Y %H.%M.%S")
-  fi
+FIRST="$(ls -1 "$STAGE"/*.ts | sort -V | head -n1)"
+LASTF="$(ls -1 "$STAGE"/*.ts | sort -V | tail -n1)"
+if [ -f "$START" ]; then
+  S_TS=$(cat "$START" 2>/dev/null || echo '')
+  [ -n "$S_TS" ] && START_FMT="$(date -d "@$S_TS" +"%d.%m.%Y %H.%M.%S")" || START_FMT="$(date -r "$FIRST" +"%d.%m.%Y %H.%M.%S")"
 else
-    START_FMT=$(date -r "$FIRST_STAGED" +"%d.%m.%Y %H.%M.%S")
+  START_FMT="$(date -r "$FIRST" +"%d.%m.%Y %H.%М.%S")"
 fi
-END_FMT=$(date -r "$LAST_STAGED" +"%d.%m.%Y %H.%M.%S")
-CAPTION=$(printf "Stream: %s\nStart: %s\nStop: %s" "$STREAM" "$START_FMT" "$END_FMT")
+END_FMT="$(date -r "$LASTF" +"%d.%m.%Y %H.%M.%S")"
 
-OUT_FILE="$OUTPUT_DIR/${SAFE_STREAM}_$(date +%F_%H-%M-%S).mp4"
-log "concat $(wc -l < "$LISTFILE") segments into $OUT_FILE"
+OUTF="$OUT_DIR/${SAFE_KEY}_$(date +%F_%H-%M-%S).mp4"
+CAPTION=$(printf "ПК: %s\nВремя начала: %s\nВремя окончания: %s" "$KEY" "$START_FMT" "$END_FMT")
 
-# 1) Remux (copy) to keep original quality whenever possible
+log "concat $(wc -l < "$LIST") video-segments -> $OUTF"
+
+# собираем ВИДЕО-только (копированием) — гарант совместимости
 ffmpeg -hide_banner -loglevel error -nostats \
-  -f concat -safe 0 -i "$LISTFILE" \
-  -fflags +genpts \
-  -c:v copy -c:a aac -ar 48000 -ac 2 -b:a 128k \
-  -bsf:a aac_adtstoasc \
-  -movflags +faststart \
-  "$OUT_FILE" >> "$FFLOG" 2>&1 || true
+  -f concat -safe 0 -i "$LIST" \
+  -map 0:v:0 -an -fflags +genpts \
+  -c:v copy -movflags +faststart \
+  "$OUTF" >> "$LOG" 2>&1 || true
 
-probe_ok=0
-if [[ -f "$OUT_FILE" ]] && ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height -of csv=p=0 "$OUT_FILE" >/dev/null 2>&1; then
-  probe_ok=1
-fi
-
-# 2) Transcode fallback if remux produced a broken file
-if [[ "$probe_ok" -ne 1 ]]; then
-  log "remux invalid -> transcode"
-  TMP_OUT="${OUT_FILE%.mp4}.fixed.mp4"; rm -f "$TMP_OUT" 2>/dev/null || true
-  ffmpeg -hide_banner -loglevel error -nostats \
-    -f concat -safe 0 -i "$LISTFILE" \
-    -fflags +genpts+igndts+discardcorrupt \
-    -vsync 2 -async 1 \
-    -c:v libx264 -preset veryfast -profile:v high -level 4.1 \
-    -pix_fmt yuv420p -r 30 -g 60 \
-    -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
-    -c:a aac -ar 48000 -ac 2 -b:a 160k \
-    -af "aresample=async=1:first_pts=0" \
-    -movflags +faststart -max_interleave_delta 0 \
-    "$TMP_OUT" >> "$FFLOG" 2>&1 || true
-  if ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height -of csv=p=0 "$TMP_OUT" >/dev/null 2>&1; then
-    mv -f "$TMP_OUT" "$OUT_FILE"; log "transcode OK"
-  else
-    log "transcode failed"
+if [ -f "$OUTF" ]; then
+  SIZE=$(stat -c%s "$OUTF" 2>/dev/null || echo 0)
+  if [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ]; then
+    if [ "$SIZE" -le "$MAX_TG" ]; then
+      curl -s -F "chat_id=${CHAT_ID}" -F "caption=${CAPTION}" -F "video=@${OUTF}" \
+           "https://api.telegram.org/bot${BOT_TOKEN}/sendVideo" >/dev/null 2>&1 || true
+    else
+      curl -s -F "chat_id=${CHAT_ID}" -F "caption=${CAPTION}" -F "document=@${OUTF}" \
+           "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" >/dev/null 2>&1 || true
+    fi
   fi
 fi
 
-# 3) Telegram notifications with the resulting file
-if [[ -f "$OUT_FILE" && -n "$BOT_TOKEN" && -n "$CHAT_ID" ]]; then
-  SIZE=$(stat -c%s "$OUT_FILE" 2>/dev/null || echo 0)
-  MAX_TELEGRAM_BYTES=$((50*1024*1024))
-  if (( SIZE <= MAX_TELEGRAM_BYTES )); then
-    log "sendVideo (${SIZE} bytes)"
-    RESP=$(curl -s -F chat_id="$CHAT_ID" -F "caption=$CAPTION" -F "video=@$OUT_FILE" \
-                 "https://api.telegram.org/bot${BOT_TOKEN}/sendVideo" 2>&1 || true)
-    echo "$RESP" | grep -q '"ok":true' || {
-      log "sendVideo failed -> sendDocument"
-      RESP2=$(curl -s -F chat_id="$CHAT_ID" -F "caption=$CAPTION" -F "document=@$OUT_FILE" \
-                    "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" 2>&1 || true)
-      echo "$RESP2" | grep -q '"ok":true' || \
-        curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-             --data-urlencode "chat_id=${CHAT_ID}" \
-             --data-urlencode "text=$(printf 'Stream: %s\nStart: %s\nStop: %s\n\nFailed to upload recording (size: %s bytes).' "$STREAM" "$START_FMT" "$END_FMT" "$SIZE")" >/dev/null || true
-    }
-  else
-    log "too large (${SIZE})"
-    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-         --data-urlencode "chat_id=${CHAT_ID}" \
-         --data-urlencode "text=$(printf 'Stream: %s\nStart: %s\nStop: %s\n\nRecording is too large for Telegram (size: %s bytes).' "$STREAM" "$START_FMT" "$END_FMT" "$SIZE")" >/dev/null || true
-  fi
-fi
-
-# 4) Cleanup temporary files and intermediate artifacts
-rm -rf "$STAGE_DIR" 2>/dev/null || true
-[[ -f "$STARTFILE" ]] && rm -f "$STARTFILE" || true
-rm -f "$STREAM_DIR"/*.ts 2>/dev/null || true
-rmdir --ignore-fail-on-non-empty "$STREAM_DIR" 2>/dev/null || true
-rm -f "$OUT_FILE" 2>/dev/null || true
-
-log "done"
+# уборка
+rm -rf "$STAGE" 2>/dev/null || true
+[ -f "$OUTF" ] && rm -f "$OUTF" || true
+rm -f "$DIR"/*.ts "$DIR"/*.m3u8" 2>/dev/null || true
+[ -f "$START" ] && rm -f "$START" || true
+rmdir --ignore-fail-on-non-empty "$DIR" 2>/dev/null || true
 exit 0
-
-
-
