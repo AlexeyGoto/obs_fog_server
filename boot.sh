@@ -24,15 +24,27 @@ log "ENV PROFILE: ${PROFILE_OUT_RES} @ ${PROFILE_FPS}fps, ${PROFILE_BITRATE_KBPS
 # Normalize KEYS -> whitespace separated tokens
 KEYS_NORM="$(echo "$KEYS" | tr ',;' '  ' | xargs 2>/dev/null || true)"
 
-# Configure basic auth if requested
+# Configure basic auth (writes nginx include snippet)
+AUTH_SNIPPET=/etc/nginx/conf.d/location_auth.conf
+mkdir -p /etc/nginx/conf.d
+
 if [[ "${BASIC_AUTH,,}" == "true" ]]; then
   log "Basic auth enabled for /"
   HASHED_PASS="$(openssl passwd -apr1 "$BASIC_AUTH_PASS")"
   printf "%s:%s\n" "$BASIC_AUTH_USER" "$HASHED_PASS" > /etc/nginx/.htpasswd
+  cat > "$AUTH_SNIPPET" <<'NGINX'
+auth_basic "Restricted";
+auth_basic_user_file /etc/nginx/.htpasswd;
+NGINX
 else
-  # Empty file keeps nginx happy when auth is disabled
+  log "Basic auth disabled for /"
+  # Allow unauthenticated access when basic auth is disabled
   : > /etc/nginx/.htpasswd
+  cat > "$AUTH_SNIPPET" <<'NGINX'
+allow all;
+NGINX
 fi
+
 
 # Generate index.html with a simple grid of players
 INDEX=/usr/share/nginx/html/index.html
@@ -112,5 +124,11 @@ log "nginx started"
 
 # Follow logs of nginx and recorder processes
 touch /var/log/nginx/error.log /var/log/nginx/access.log /var/log/nginx/rtmp_access.log
-tail -F /var/log/nginx/error.log /var/log/nginx/access.log /var/log/nginx/rtmp_access.log /var/hls_rec/*/rec.log 2>/dev/null &
-wait -n
+shopt -s nullglob
+REC_LOGS=(/var/hls_rec/*/rec.log)
+shopt -u nullglob
+
+tail -F /var/log/nginx/error.log /var/log/nginx/access.log /var/log/nginx/rtmp_access.log "${REC_LOGS[@]}" 2>/dev/null &
+wait -n || true
+
+
