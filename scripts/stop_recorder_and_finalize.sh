@@ -5,7 +5,6 @@ KEY="$1"
 
 BOT_TOKEN="${BOT_TOKEN:-}"
 CHAT_ID="${CHAT_ID:-}"
-SEG_TIME="${SEG_TIME:-5}"
 SEG_CNT="${RECORD_SEGMENTS:-84}"
 
 SAFE_KEY="$(printf '%s' "$KEY" | tr -cd 'A-Za-z0-9._-')"
@@ -45,6 +44,7 @@ if [ "${#CANDS[@]}" -eq 0 ]; then
   exit 0
 fi
 
+# дождаться финального сегмента
 last="${CANDS[-1]}"
 if [ -n "$last" ]; then
   tries=12

@@ -2,10 +2,11 @@
 set -euo pipefail
 
 LOG="/app/log/entrypoint.log"
+# Ведём stdout/stderr в логи контейнера и файл
 exec > >(tee -a "$LOG") 2>&1
 
-echo "=== [ENTRYPOINT] $(date '+%F %T') starting ==="
-echo "[ENTRYPOINT] env: STREAM_KEYS='${STREAM_KEYS:-}', BOT_TOKEN set? $([ -n "${BOT_TOKEN:-}" ] && echo yes || echo no), CHAT_ID='${CHAT_ID:-}'"
+echo "=== [ENTRYPOINT] $(date '+%F %T') start ==="
+echo "[ENTRYPOINT] ENV: STREAM_KEYS='${STREAM_KEYS:-}' BOT_TOKEN=$([ -n "${BOT_TOKEN:-}" ] && echo set || echo unset) CHAT_ID='${CHAT_ID:-}' SEG_TIME='${SEG_TIME:-5}' RECORD_SEGMENTS='${RECORD_SEGMENTS:-84}'"
 
 STREAM_KEYS="${STREAM_KEYS:-}"
 BOT_TOKEN="${BOT_TOKEN:-}"
@@ -14,10 +15,9 @@ PUBLIC_HOST="${PUBLIC_HOST:-}"
 SEG_TIME="${SEG_TIME:-5}"
 RECORD_SEGMENTS="${RECORD_SEGMENTS:-84}"
 
-# фикс для nginx-rtmp exec в Docker
+# фикс лимита дескрипторов (exec_* хуки nginx-rtmp это любят)
 ulimit -n 1024 || true
 
-# Подготовим директории
 mkdir -p /var/hls /var/hls_rec /tmp/videos /app/obs_profiles /app/www
 echo "OK" > /app/www/healthz
 
@@ -31,10 +31,9 @@ detect_public_host() {
 PHOST="$(detect_public_host)"
 echo "[ENTRYPOINT] PUBLIC HOST: $PHOST"
 
-# Разбираем ключи (даже если пусто — сгенерим заглушку)
 IFS=',' read -r -a KEYS <<< "${STREAM_KEYS}"
 
-# Генерация index.html
+# Генерация index.html (всегда)
 echo "[ENTRYPOINT] Generating /app/www/index.html ..."
 {
   cat <<'HTML_HEAD'
@@ -76,8 +75,7 @@ HTML_TILE
   if [ "$CNT" -eq 0 ]; then
     cat <<HTML_EMPTY
     <div class="tile"><div class="title">Ключи не заданы</div>
-      <p>В переменной окружения <code>STREAM_KEYS</code> перечисли ключи через запятую.<br>
-      Пример: <code>STREAM_KEYS=12952x11,pc7</code></p>
+      <p>Задай переменную <code>STREAM_KEYS</code> (через запятую). Пример: <code>STREAM_KEYS=12952x11,pc7</code></p>
       <p>RTMP: <code>rtmp://${PHOST}:1935/live</code></p>
     </div>
 HTML_EMPTY
@@ -91,9 +89,9 @@ HTML_EMPTY
 HTML_TAIL
 } > /app/www/index.html
 
-ls -l /app/www
+ls -l /app/www || true
 
-# OBS-профили + отправка в Telegram
+# OBS профили + отправка в Telegram
 make_and_send_profile() {
   local KEY="$1"
   local PROF="LowVPS-RTMP-${KEY}"
@@ -151,7 +149,7 @@ EOF
          -F "caption=OBS профиль для ключа ${KEY}\nRTMP: rtmp://${PHOST}:1935/live\nKey: ${KEY}" \
          "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" >/dev/null 2>&1 || true
   else
-    echo "[ENTRYPOINT] BOT_TOKEN/CHAT_ID not set; not sending profiles"
+    echo "[ENTRYPOINT] BOT_TOKEN/CHAT_ID not set — skip sending"
   fi
 }
 
@@ -163,9 +161,11 @@ for KEY in "${KEYS[@]}"; do
 done
 echo "[ENTRYPOINT] Profiles processed: $SENT"
 
-# sanity-чек nginx конфига
-echo "[ENTRYPOINT] nginx -t"
-nginx -t || { echo "[ENTRYPOINT] nginx -t failed"; cat /etc/nginx/nginx.conf; exit 1; }
+echo "[ENTRYPOINT] nginx -t:"
+nginx -t || { echo "[ENTRYPOINT] nginx -t FAILED! Dumping config:"; nginx -T || true; exit 1; }
+
+echo "[ENTRYPOINT] Dump full nginx config (nginx -T) for debugging:"
+nginx -T || true
 
 echo "[ENTRYPOINT] starting nginx (foreground) ..."
 exec nginx -g 'daemon off;'

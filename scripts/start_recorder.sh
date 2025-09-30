@@ -32,7 +32,6 @@ fi
 
 rm -f "$DIR"/*.ts "$DIR"/*.m3u8 2>/dev/null || true
 
-# copy-only HLS кольцо (минимум CPU)
 nohup ffmpeg -hide_banner -loglevel warning -nostats \
   -i "rtmp://127.0.0.1:1935/live/${KEY}" \
   -c copy \
