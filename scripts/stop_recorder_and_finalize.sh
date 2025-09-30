@@ -15,15 +15,13 @@ DIR="/var/hls_rec/${SAFE_KEY}"
 PID="/var/run/rec-${SAFE_KEY}.pid"
 START="/var/run/rec-${SAFE_KEY}.start"
 LOG="$DIR/rec.log"
-OUT_DIR="/tmp/videos"
-mkdir -p "$OUT_DIR"
+OUT_DIR="/tmp/videos"; mkdir -p "$OUT_DIR"
 
 MAX_TG=$((50*1024*1024))
 trim_log_if_big(){ [ -f "$LOG" ] || return 0; local sz; sz=$(stat -c%s "$LOG" 2>/dev/null||echo 0); [ "$sz" -ge $((10*1024*1024)) ] && : > "$LOG" || true; }
 log(){ echo "$(date '+%F %T'): $*" >> "$LOG"; trim_log_if_big; }
 safe_send_msg(){ local text="$1"; [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ] && curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" --data-urlencode "chat_id=${CHAT_ID}" --data-urlencode "text=${text}" >/dev/null 2>&1 || true; }
 
-# остановить рекордер
 if [ -f "$PID" ]; then
   P=$(cat "$PID" 2>/dev/null || true)
   if [ -n "${P:-}" ] && kill -0 "$P" 2>/dev/null; then
@@ -37,7 +35,6 @@ fi
 
 sleep 1; sync
 
-# последние SEG_CNT сегментов
 mapfile -t CANDS < <(ls -1 "$DIR"/"${SAFE_KEY}-"*.ts 2>/dev/null | sort -V | tail -n "$SEG_CNT")
 if [ "${#CANDS[@]}" -eq 0 ]; then
   log "no segments found"
@@ -48,7 +45,6 @@ if [ "${#CANDS[@]}" -eq 0 ]; then
   exit 0
 fi
 
-# дождаться «устаканивания» последнего
 last="${CANDS[-1]}"
 if [ -n "$last" ]; then
   tries=12
@@ -61,7 +57,6 @@ if [ -n "$last" ]; then
   log "last segment settled: $(basename "$last")"
 fi
 
-# стадж: только сегменты с видео
 STAGE="$(mktemp -d "/tmp/stage_${SAFE_KEY}_XXXX")"
 idx=0
 for f in "${CANDS[@]}"; do
@@ -97,7 +92,6 @@ CAPTION=$(printf "ПК: %s\nВремя начала: %s\nВремя оконча
 
 log "concat $(wc -l < "$LIST") video-segments -> $OUTF"
 
-# собираем видео-только (копированием) — минимум CPU и хорошая совместимость
 ffmpeg -hide_banner -loglevel error -nostats \
   -f concat -safe 0 -i "$LIST" \
   -map 0:v:0 -an -fflags +genpts \
@@ -117,7 +111,6 @@ if [ -f "$OUTF" ]; then
   fi
 fi
 
-# уборка
 rm -rf "$STAGE" 2>/dev/null || true
 [ -f "$OUTF" ] && rm -f "$OUTF" || true
 rm -f "$DIR"/*.ts "$DIR"/*.m3u8 2>/dev/null || true

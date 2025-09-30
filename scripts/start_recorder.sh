@@ -20,7 +20,6 @@ mkdir -p "$DIR"
 : > "$LOG"
 date +%s > "$START"
 
-# уже запущен?
 if [ -f "$PID" ]; then
   P=$(cat "$PID" 2>/dev/null || true)
   if [ -n "${P:-}" ] && kill -0 "$P" 2>/dev/null; then
@@ -31,10 +30,9 @@ if [ -f "$PID" ]; then
   fi
 fi
 
-# чистим старое
 rm -f "$DIR"/*.ts "$DIR"/*.m3u8 2>/dev/null || true
 
-# ffmpeg: HLS-кольцо (copy-only, минимум CPU)
+# copy-only HLS кольцо (минимум CPU)
 nohup ffmpeg -hide_banner -loglevel warning -nostats \
   -i "rtmp://127.0.0.1:1935/live/${KEY}" \
   -c copy \

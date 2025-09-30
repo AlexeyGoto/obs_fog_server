@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+LOG="/app/log/entrypoint.log"
+exec > >(tee -a "$LOG") 2>&1
+
+echo "=== [ENTRYPOINT] $(date '+%F %T') starting ==="
+echo "[ENTRYPOINT] env: STREAM_KEYS='${STREAM_KEYS:-}', BOT_TOKEN set? $([ -n "${BOT_TOKEN:-}" ] && echo yes || echo no), CHAT_ID='${CHAT_ID:-}'"
+
 STREAM_KEYS="${STREAM_KEYS:-}"
 BOT_TOKEN="${BOT_TOKEN:-}"
 CHAT_ID="${CHAT_ID:-}"
@@ -8,10 +14,12 @@ PUBLIC_HOST="${PUBLIC_HOST:-}"
 SEG_TIME="${SEG_TIME:-5}"
 RECORD_SEGMENTS="${RECORD_SEGMENTS:-84}"
 
-[ -n "$STREAM_KEYS" ] || { echo "ERROR: STREAM_KEYS is required"; exit 1; }
-
-# фикс для exec в Docker (иначе бывают залипания процессов)
+# фикс для nginx-rtmp exec в Docker
 ulimit -n 1024 || true
+
+# Подготовим директории
+mkdir -p /var/hls /var/hls_rec /tmp/videos /app/obs_profiles /app/www
+echo "OK" > /app/www/healthz
 
 detect_public_host() {
   if [ -n "$PUBLIC_HOST" ]; then
@@ -21,11 +29,13 @@ detect_public_host() {
   if [ -n "$PH" ]; then echo "$PH"; else hostname -i | awk '{print $1}'; fi
 }
 PHOST="$(detect_public_host)"
-echo "PUBLIC HOST: $PHOST"
+echo "[ENTRYPOINT] PUBLIC HOST: $PHOST"
 
-mkdir -p /var/hls /var/hls_rec /tmp/videos /app/obs_profiles
+# Разбираем ключи (даже если пусто — сгенерим заглушку)
+IFS=',' read -r -a KEYS <<< "${STREAM_KEYS}"
 
-IFS=',' read -r -a KEYS <<< "$STREAM_KEYS"
+# Генерация index.html
+echo "[ENTRYPOINT] Generating /app/www/index.html ..."
 {
   cat <<'HTML_HEAD'
 <!doctype html>
@@ -49,8 +59,10 @@ IFS=',' read -r -a KEYS <<< "$STREAM_KEYS"
   <div class="grid">
 HTML_HEAD
 
+  CNT=0
   for KEY in "${KEYS[@]}"; do
     KTRIM="$(echo "$KEY" | xargs)"; [ -z "$KTRIM" ] && continue
+    CNT=$((CNT+1))
     cat <<HTML_TILE
     <div class="tile">
       <div class="title">Ключ: <code>${KTRIM}</code></div>
@@ -61,6 +73,16 @@ HTML_HEAD
 HTML_TILE
   done
 
+  if [ "$CNT" -eq 0 ]; then
+    cat <<HTML_EMPTY
+    <div class="tile"><div class="title">Ключи не заданы</div>
+      <p>В переменной окружения <code>STREAM_KEYS</code> перечисли ключи через запятую.<br>
+      Пример: <code>STREAM_KEYS=12952x11,pc7</code></p>
+      <p>RTMP: <code>rtmp://${PHOST}:1935/live</code></p>
+    </div>
+HTML_EMPTY
+  fi
+
   cat <<'HTML_TAIL'
   </div>
   <script src="https://vjs.zencdn.net/7.21.1/video.min.js"></script>
@@ -69,8 +91,9 @@ HTML_TILE
 HTML_TAIL
 } > /app/www/index.html
 
-echo "Generated /app/www/index.html"
+ls -l /app/www
 
+# OBS-профили + отправка в Telegram
 make_and_send_profile() {
   local KEY="$1"
   local PROF="LowVPS-RTMP-${KEY}"
@@ -119,23 +142,30 @@ EOF
 EOF
 
   (cd /app/obs_profiles && zip -rq "${PROF}.zip" "${PROF}")
+  echo "[ENTRYPOINT] Profile zipped: /app/obs_profiles/${PROF}.zip"
 
   if [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ]; then
+    echo "[ENTRYPOINT] Sending OBS profile for '${KEY}' to Telegram..."
     curl -s -F "chat_id=${CHAT_ID}" \
          -F "document=@/app/obs_profiles/${PROF}.zip" \
          -F "caption=OBS профиль для ключа ${KEY}\nRTMP: rtmp://${PHOST}:1935/live\nKey: ${KEY}" \
          "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" >/dev/null 2>&1 || true
-    echo "Sent OBS profile for ${KEY} to Telegram"
   else
-    echo "BOT_TOKEN/CHAT_ID not set; profile at /app/obs_profiles/${PROF}.zip"
+    echo "[ENTRYPOINT] BOT_TOKEN/CHAT_ID not set; not sending profiles"
   fi
 }
 
+SENT=0
 for KEY in "${KEYS[@]}"; do
   KTRIM="$(echo "$KEY" | xargs)"; [ -z "$KTRIM" ] && continue
   make_and_send_profile "$KTRIM"
+  SENT=$((SENT+1))
 done
+echo "[ENTRYPOINT] Profiles processed: $SENT"
 
-export SEG_TIME RECORD_SEGMENTS BOT_TOKEN CHAT_ID
-echo "Starting nginx..."
+# sanity-чек nginx конфига
+echo "[ENTRYPOINT] nginx -t"
+nginx -t || { echo "[ENTRYPOINT] nginx -t failed"; cat /etc/nginx/nginx.conf; exit 1; }
+
+echo "[ENTRYPOINT] starting nginx (foreground) ..."
 exec nginx -g 'daemon off;'
