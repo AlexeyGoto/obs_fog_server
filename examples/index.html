@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Трансляции экранов</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Подключаем стили Video.js -->
+  <link href="/videojs/video-js.css" rel="stylesheet">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f4f4f4;
+      margin: 0;
+      padding: 0;
+    }
+    h1 {
+      text-align: center;
+      padding: 20px;
+      margin: 0;
+      background: #007BFF;
+      color: #fff;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px;
+      padding: 10px;
+    }
+    .tile {
+      background-color: #fff;
+      border-radius: 5px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      padding: 10px;
+      text-align: center;
+    }
+    .video-container {
+      position: relative;
+      width: 100%;
+      padding-top: 56.25%; /* 16:9 */
+      background: #000;
+      overflow: hidden;
+    }
+    .video-js {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      background: #000;
+    }
+  </style>
+</head>
+<body>
+  <h1>Трансляции экранов Fog Play</h1>
+  <div class="grid">
+    <!-- PC-1 -->
+    <div class="tile">
+      <div class="video-container">
+        <video id="video1" class="video-js" controls preload="auto" muted autoplay playsinline>
+          <source src="/hls/pc1.m3u8" type="application/x-mpegURL">
+        </video>
+      </div>
+      <p>PC-1</p>
+    </div>
+    <!-- PC-2 -->
+    <div class="tile">
+      <div class="video-container">
+        <video id="video2" class="video-js" controls preload="auto" muted autoplay playsinline>
+          <source src="/hls/pc2.m3u8" type="application/x-mpegURL">
+        </video>
+      </div>
+      <p>PC-2</p>
+    </div>
+    <!-- PC-3 -->
+    <div class="tile">
+      <div class="video-container">
+        <video id="video3" class="video-js" controls preload="auto" muted autoplay playsinline>
+          <source src="/hls/pc3.m3u8" type="application/x-mpegURL">
+        </video>
+      </div>
+      <p>PC-3</p>
+    </div>
+    <!-- PC-4 -->
+    <div class="tile">
+      <div class="video-container">
+        <video id="video4" class="video-js" controls preload="auto" muted autoplay playsinline>
+          <source src="/hls/pc4.m3u8" type="application/x-mpegURL">
+        </video>
+      </div>
+      <p>PC-4</p>
+    </div>
+    <!-- PC-5 -->
+    <div class="tile">
+      <div class="video-container">
+        <video id="video5" class="video-js" controls preload="auto" muted autoplay playsinline>
+          <source src="/hls/pc5.m3u8" type="application/x-mpegURL">
+        </video>
+      </div>
+      <p>PC-5</p>
+    </div>
+    <!-- PC-6 -->
+    <div class="tile">
+      <div class="video-container">
+        <video id="video6" class="video-js" controls preload="auto" muted autoplay playsinline>
+          <source src="/hls/pc6.m3u8" type="application/x-mpegURL">
+        </video>
+      </div>
+      <p>PC-6</p>
+    </div>
+    <!-- PC-7 -->
+    <div class="tile">
+      <div class="video-container">
+        <video id="video7" class="video-js" controls preload="auto" muted autoplay playsinline>
+          <source src="/hls/pc7.m3u8" type="application/x-mpegURL">
+        </video>
+      </div>
+      <p>PC-7</p>
+    </div>
+    <!-- PC-8 -->
+    <div class="tile">
+      <div class="video-container">
+        <video id="video8" class="video-js" controls preload="auto" muted autoplay playsinline>
+          <source src="/hls/pc8.m3u8" type="application/x-mpegURL">
+        </video>
+      </div>
+      <p>PC-8</p>
+    </div>
+    <!-- PC-9 -->
+    <div class="tile">
+      <div class="video-container">
+        <video id="video9" class="video-js" controls preload="auto" muted autoplay playsinline>
+          <source src="/hls/pc9.m3u8" type="application/x-mpegURL">
+        </video>
+      </div>
+      <p>PC-9</p>
+    </div>
+    <!-- PC-10 -->
+    <div class="tile">
+      <div class="video-container">
+        <video id="video10" class="video-js" controls preload="auto" muted autoplay playsinline>
+          <source src="/hls/pc10.m3u8" type="application/x-mpegURL">
+        </video>
+      </div>
+      <p>PC-10</p>
+    </div>
+    <!-- PC-TEST -->
+    <div class="tile">
+      <div class="video-container">
+        <video id="video11" class="video-js" controls preload="auto" muted autoplay playsinline>
+          <source src="/hls/pctest.m3u8" type="application/x-mpegURL">
+        </video>
+      </div>
+      <p>PC-TEST</p>
+    </div>
+  </div>
+  <script src="/videojs/video.min.js"></script>
+  <script>
+    // Определяем список потоков
+    const streams = [
+      { playerId: 'video1', streamKey: 'pc1' },
+      { playerId: 'video2', streamKey: 'pc2' },
+      { playerId: 'video3', streamKey: 'pc3' },
+      { playerId: 'video4', streamKey: 'pc4' },
+      { playerId: 'video5', streamKey: 'pc5' },
+      { playerId: 'video6', streamKey: 'pc6' },
+      { playerId: 'video7', streamKey: 'pc7' },
+      { playerId: 'video8', streamKey: 'pc8' },
+      { playerId: 'video9', streamKey: 'pc9' },
+      { playerId: 'video10', streamKey: 'pc10' },
+      { playerId: 'video11', streamKey: 'pctest' },
+    ];
+
+    const players = {};
+
+    // Для каждого плеера будем хранить таймер обновления, если стрим не возобновился
+    const refreshTimers = {};
+
+    function initPlayer({ playerId, streamKey }) {
+      const player = videojs(playerId, {
+        autoplay: 'muted',
+        muted: true,
+        controls: true,
+        preload: 'auto'
+      });
+
+      // Функция для обновления источника
+      function refreshSource() {
+        console.warn(`Обновление источника для ${playerId}`);
+        player.src({ src: `/hls/${streamKey}.m3u8`, type: 'application/x-mpegURL' });
+        player.load();
+        player.play().catch(err => console.warn(`Ошибка при обновлении ${playerId}:`, err));
+      }
+
+      // Функция запуска таймера обновления (если стрим не возобновился)
+      function scheduleRefresh() {
+        if (!refreshTimers[playerId]) {
+          refreshTimers[playerId] = setTimeout(() => {
+            refreshSource();
+            refreshTimers[playerId] = null;
+          }, 10000); // ждем 10 секунд перед обновлением
+        }
+      }
+
+      // Функция отмены запланированного обновления
+      function cancelRefresh() {
+        if (refreshTimers[playerId]) {
+          clearTimeout(refreshTimers[playerId]);
+          refreshTimers[playerId] = null;
+        }
+      }
+
+      // При ошибке пытаемся обновить источник через 10 секунд
+      player.on('error', function() {
+        console.warn(`Ошибка в плеере ${playerId}`);
+        scheduleRefresh();
+      });
+
+      // При ожидании данных также планируем обновление
+      player.on('waiting', function() {
+        console.warn(`Плеер ${playerId} ожидает данные`);
+        scheduleRefresh();
+      });
+
+      // Когда воспроизведение возобновляется, отменяем обновление
+      player.on('playing', function() {
+        console.log(`${playerId} воспроизводится нормально`);
+        cancelRefresh();
+      });
+
+      player.ready(() => {
+        player.play().catch(err => {
+          console.warn(`Автовоспроизведение заблокировано для ${playerId}:`, err);
+        });
+      });
+
+      players[playerId] = player;
+    }
+
+    // Инициализируем всех плееров
+    streams.forEach(initPlayer);
+  </script>
+</body>
+</html>
+
