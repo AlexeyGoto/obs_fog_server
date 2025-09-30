@@ -1,42 +1,64 @@
 #!/usr/bin/env bash
-# Лёгкий рекордер: RTMP -> HLS в /var/hls_rec/<key>/, без перекодирования
-set -e
+# Запускается из nginx-rtmp: exec_publish  /usr/local/bin/start_recorder.sh $app $name
+set -euo pipefail
 
-APP="$1"; STREAM="$2"
-SAFE_STREAM="$(printf '%s' "$STREAM" | tr -cd 'A-Za-z0-9._-')"; [ -n "$SAFE_STREAM" ] || SAFE_STREAM="stream_$(date +%s)"
+APP="$1"
+STREAM="$2"
 
-# Управление длительностью и «кольцом» через ENV:
-SEG_TIME="${REC_SEG_TIME:-5}"          # длина сегмента, сек (советую выставить такой же Keyframe Interval в OBS)
-BUFFER_SEC="${REC_BUFFER_SEC:-300}"    # сколько секунд хранить (по умолчанию 5 минут)
-LIST_SIZE="$(( BUFFER_SEC / SEG_TIME ))"
+# Безопасное имя на ФС
+SAFE_STREAM="$(printf '%s' "$STREAM" | tr -cd 'A-Za-z0-9._-')"
+[[ -n "$SAFE_STREAM" ]] || SAFE_STREAM="stream_$(date +%s)"
 
-DIR="/var/hls_rec/${SAFE_STREAM}"
-PID="/var/run/rec-${SAFE_STREAM}.pid"
-START="/var/run/rec-${SAFE_STREAM}.start"
-LOG="$DIR/rec.log"
+# Папка с HLS-сегментами отдельного рекордера
+RECROOT="/var/hls_rec"
+STREAM_DIR="$RECROOT/$SAFE_STREAM"
 
-mkdir -p "$DIR"
-: > "$LOG"
-date +%s > "$START"
+PIDFILE="/var/run/rec-${SAFE_STREAM}.pid"
+STARTFILE="/var/run/rec-${SAFE_STREAM}.start"
+FFLOG="$STREAM_DIR/rec.log"
 
-# уже идёт?
-if [ -f "$PID" ] && kill -0 "$(cat "$PID" 2>/dev/null)" 2>/dev/null; then
-  echo "$(date '+%F %T'): recorder already running for $SAFE_STREAM" >> "$LOG"
-  exit 0
+# --- управление размером окна записи по ENV ---
+: "${RECORDER_WINDOW_SECONDS:=300}"   # последние 5 минут (по умолчанию)
+: "${HLS_SEGMENT_SECONDS:=2}"         # длительность сегмента
+LIST_SIZE=$(( RECORDER_WINDOW_SECONDS / HLS_SEGMENT_SECONDS ))
+[[ $LIST_SIZE -lt 5 ]] && LIST_SIZE=5
+# ----------------------------------------------
+
+MAX_LOG_BYTES=$((10*1024*1024))
+trim_log(){ local f="$1"; [[ -f "$f" ]] || return 0; local s; s=$(stat -c%s "$f" 2>/dev/null || echo 0); [[ $s -ge $MAX_LOG_BYTES ]] && : > "$f" || true; }
+log(){ echo "$(date '+%F %T') [start] $*" >> "$FFLOG"; trim_log "$FFLOG"; }
+
+mkdir -p "$STREAM_DIR"
+: > "$FFLOG"
+
+# Уже запущен?
+if [[ -f "$PIDFILE" ]]; then
+  PID=$(cat "$PIDFILE" 2>/dev/null || echo "")
+  if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
+    log "recorder already running for $STREAM (PID=$PID)"; exit 0
+  else
+    rm -f "$PIDFILE"
+  fi
 fi
-rm -f "$PID" 2>/dev/null || true
-rm -f "$DIR"/*.ts "$DIR"/*.m3u8 2>/dev/null || true
 
-# copy-only HLS
-nohup ffmpeg -hide_banner -loglevel warning -nostats \
-  -i "rtmp://127.0.0.1/$APP/$STREAM" \
+# Чистим предыдущие следы (важно!)
+rm -f "$STREAM_DIR"/*.ts "$STREAM_DIR"/*.m3u8 2>/dev/null || true
+
+# Сохраняем время старта (epoch)
+date +%s > "$STARTFILE"
+
+# ВАЖНО: нулевой CPU — пишем HLS-сегменты в copy-режиме.
+# Монотонная нумерация файлов, delete старых сегментов, размер плейлиста = окно записи.
+nohup ffmpeg -y -hide_banner -loglevel warning -nostats \
+  -i "rtmp://127.0.0.1/${APP}/${STREAM}" \
   -c copy \
   -f hls \
-  -hls_time "$SEG_TIME" \
+  -hls_time "$HLS_SEGMENT_SECONDS" \
   -hls_list_size "$LIST_SIZE" \
   -hls_flags delete_segments+split_by_time \
-  -hls_segment_filename "$DIR/${SAFE_STREAM}-%06d.ts" \
-  "$DIR/${SAFE_STREAM}.m3u8" >> "$LOG" 2>&1 &
+  -hls_segment_filename "$STREAM_DIR/${SAFE_STREAM}-%06d.ts" \
+  "$STREAM_DIR/${SAFE_STREAM}.m3u8" >> "$FFLOG" 2>&1 &
 
-echo $! > "$PID"
-echo "$(date '+%F %T'): started ($SAFE_STREAM) seg=${SEG_TIME}s, list=${LIST_SIZE}" >> "$LOG"
+echo $! > "$PIDFILE"
+log "started (PID=$(cat "$PIDFILE"), list_size=${LIST_SIZE}, seg=${HLS_SEGMENT_SECONDS}s)"
+exit 0

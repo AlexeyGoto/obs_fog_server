@@ -1,136 +1,114 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
-trap 'echo "[boot] ERROR on line $LINENO: $BASH_COMMAND" >&2' ERR
+set -euo pipefail
 
 log(){ echo "[boot] $*"; }
 
-# ===== ENV =====
-: "${KEYS:=pc1}"                     # через запятую
-: "${APP_BASE_URL:=}"                # если пусто — автоопределим
-: "${PROFILE_RES:=854x480}"
+# ========= ENV c разумными дефолтами =========
+: "${KEYS:=}"                         # "pc1,pc2" или "pc1 pc2"
+: "${BASIC_AUTH:=false}"              # true|false
+: "${BASIC_AUTH_USER:=admin}"
+: "${BASIC_AUTH_PASS:=admin}"
+: "${BOT_TOKEN:=}"                    # опционально
+: "${CHAT_ID:=}"                      # опционально
+
+# Профиль — только для подсказки и сообщений
+: "${PROFILE_OUT_RES:=854x480}"
 : "${PROFILE_FPS:=30}"
 : "${PROFILE_BITRATE_KBPS:=500}"
-: "${PROFILE_SEG_TIME:=5}"           # должен совпадать с REC_SEG_TIME
-: "${BASIC_AUTH_USER:=}"
-: "${BASIC_AUTH_PASS:=}"
+: "${PROFILE_KEYINT_SEC:=2}"
+# ============================================
 
-log "ENV KEYS=$KEYS"
-log "ENV APP_BASE_URL=${APP_BASE_URL:-<auto>}"
-log "ENV PROFILE: ${PROFILE_RES} @ ${PROFILE_FPS}fps, ${PROFILE_BITRATE_KBPS}kbps, keyint=${PROFILE_SEG_TIME}s"
+log "ENV KEYS=${KEYS}"
+log "ENV PROFILE: ${PROFILE_OUT_RES} @ ${PROFILE_FPS}fps, ${PROFILE_BITRATE_KBPS}kbps, keyint=${PROFILE_KEYINT_SEC}s"
 
-# ===== внешний адрес =====
-BASE_HOST="$APP_BASE_URL"
-if [ -z "$BASE_HOST" ]; then
-  BASE_HOST="$(curl -fsS https://api.ipify.org || true)"
-  [ -z "$BASE_HOST" ] && BASE_HOST="$(dig +short myip.opendns.com @resolver1.opendns.com || true)"
-  [ -z "$BASE_HOST" ] && BASE_HOST="$(hostname -I 2>/dev/null | awk '{print $1}')"
-fi
-RTMP_URL="rtmp://${BASE_HOST}/live"
-HTTP_URL="http://${BASE_HOST}"
-log "Resolved BASE_HOST=$BASE_HOST"
+# Нормализуем KEYS -> пробелы
+KEYS_NORM="$(echo "$KEYS" | tr ',;' '  ' | xargs 2>/dev/null || true)"
 
-# ===== basic auth (опционально) =====
-if [ -n "$BASIC_AUTH_USER" ] && [ -n "$BASIC_AUTH_PASS" ]; then
-  HASH=$(openssl passwd -apr1 "$BASIC_AUTH_PASS")
-  echo "${BASIC_AUTH_USER}:${HASH}" > /etc/nginx/.htpasswd
-  # включаем auth_basic (строка была 'off')
-  sed -i 's/auth_basic\s\+off;/auth_basic "Restricted";/g' /etc/nginx/nginx.conf
+# Basic auth (если включён)
+if [[ "${BASIC_AUTH,,}" == "true" ]]; then
   log "Basic auth enabled for /"
-fi
-
-# ===== index.html =====
-IFS=',' read -ra KEYS_ARR <<< "$KEYS"
-HTML="/usr/share/nginx/html/index.html"
-{
-  cat <<'HEAD'
-<!doctype html><html lang="ru"><head>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
-<title>Мониторинг ПК — HLS</title>
-<link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet"/>
-<style>
-body{margin:0;font-family:system-ui,Segoe UI,Arial,sans-serif;background:#0b0e14;color:#e6edf3}
-header{padding:12px 16px;background:#111827;border-bottom:1px solid #1f2937}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px;padding:12px}
-.tile{background:#111827;border:1px solid #1f2937;border-radius:16px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.25)}
-.tile h3{margin:8px 12px 0 12px;font-size:14px;font-weight:600;color:#9ca3af}
-.vwrap{padding:12px}
-.video-js{width:100%;height:0;padding-top:56.25%;background:#000;border-radius:12px}
-.note{padding:0 16px 12px;color:#9ca3af;font-size:12px}
-a{color:#93c5fd}
-</style></head><body>
-<header><strong>Мониторинг ПК</strong> · HLS / video.js · <span id="host"></span></header>
-<div class="grid">
-HEAD
-  for key in "${KEYS_ARR[@]}"; do
-    safe=$(echo "$key" | tr -cd 'A-Za-z0-9._-')
-    cat <<TILE
-<div class="tile">
-  <div class="vwrap">
-    <video id="v-${safe}" class="video-js vjs-default-skin" controls preload="auto" muted autoplay playsinline>
-      <source src="/hls/${safe}.m3u8" type="application/x-mpegURL">
-    </video>
-  </div>
-  <h3>ПК: ${safe}</h3>
-  <div class="note">RTMP: ${RTMP_URL}/${safe}<br>HLS: /hls/${safe}.m3u8</div>
-</div>
-TILE
-  done
-  cat <<'FOOT'
-</div>
-<script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
-<script>
-document.getElementById('host').textContent = location.origin;
-document.querySelectorAll('video.video-js').forEach(v=>{
-  const p=videojs(v,{liveui:true,inactivityTimeout:0});
-  p.on('error',()=>console.warn('video.js error:',p.error()));
-});
-</script>
-</body></html>
-FOOT
-} > "$HTML"
-log "index.html generated with ${#KEYS_ARR[@]} player(s)"
-
-# ===== отправка OBS-профилей (если заданы BOT_TOKEN/CHAT_ID) =====
-if [ -n "${BOT_TOKEN:-}" ] && [ -n "${CHAT_ID:-}" ]; then
-  log "Sending OBS profiles to Telegram…"
-  for key in "${KEYS_ARR[@]}"; do
-    k="$(echo "$key" | tr -cd 'A-Za-z0-9._-')"
-    tmpd="$(mktemp -d)"; zipf="/tmp/OBS-Profile-${k}.zip"
-    w="${PROFILE_RES%x*}"; h="${PROFILE_RES#*x}"
-    cat > "${tmpd}/basic.ini" <<EOF
-[General]
-Name=LowVPS-RTMP-${k}
-[Output]
-Mode=Advanced
-[AdvOut]
-Encoder=obs_x264
-Bitrate=${PROFILE_BITRATE_KBPS}
-KeyframeIntervalSec=${PROFILE_SEG_TIME}
-Rescale=false
-TrackIndex=1
-ApplyServiceSettings=false
-[Audio]
-SampleRate=48000
-ChannelSetup=Stereo
-[Video]
-BaseCX=${w}
-BaseCY=${h}
-OutputCX=${w}
-OutputCY=${h}
-FPSType=Simple
-FPSCommon=${PROFILE_FPS}
-EOF
-    echo "{\"type\":\"rtmp_custom\",\"settings\":{\"service\":\"Custom\",\"server\":\"${RTMP_URL}\",\"key\":\"${k}\",\"bwtest\":false},\"hotkeys\":{}}" > "${tmpd}/service.json"
-    (cd "$tmpd" && zip -q "$zipf" basic.ini service.json)
-    caption="Профиль OBS: ${k}\nСервер: ${RTMP_URL}\nКлюч: ${k}\nВидео: ${PROFILE_RES} @ ${PROFILE_FPS}fps\nБитрейт: ${PROFILE_BITRATE_KBPS} Kbps\nKeyframe: ${PROFILE_SEG_TIME}s"
-    curl -s -F chat_id="$CHAT_ID" -F caption="$caption" -F "document=@${zipf}" "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" >/dev/null 2>&1 || true
-    rm -rf "$tmpd" "$zipf"
-  done
+  printf "%s:$(openssl passwd -apr1 "%s")\n" "$BASIC_AUTH_USER" "$BASIC_AUTH_PASS" > /etc/nginx/.htpasswd
 else
-  log "BOT_TOKEN/CHAT_ID not set — skipping OBS profile send"
+  # Пустой файл, чтобы nginx не ругался на отсутствие
+  : > /etc/nginx/.htpasswd
 fi
 
-# ===== тест/старт nginx =====
-nginx -t
-log "Starting nginx…"
-exec nginx -g 'daemon off;'
+# Генерим index.html с плитками
+INDEX=/usr/share/nginx/html/index.html
+mkdir -p /usr/share/nginx/html
+
+cat > "$INDEX" <<'HTML'
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <title>PC Monitor</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;padding:20px;background:#0b0f14;color:#e8eef5}
+    h1{font-size:20px;margin:0 0 16px;color:#c1d9ff}
+    .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+    .tile{background:#121922;border:1px solid #1e2a38;border-radius:14px;padding:12px}
+    .title{margin:8px 4px 0;font-size:14px;color:#b9c7d9}
+    video{width:100%;height:auto;background:#000;border-radius:10px;outline:none}
+    .muted{font-size:12px;color:#8493a8;margin:4px}
+  </style>
+  <script src="https://unpkg.com/hls.js@latest"></script>
+</head>
+<body>
+  <h1>PC Monitor (HLS)</h1>
+  <div class="grid" id="grid"></div>
+  <script>
+    // Ключи прокидываются через window.PLAYER_KEYS (см. ниже)
+    (function(){
+      const keys = (window.PLAYER_KEYS || []);
+      const grid = document.getElementById('grid');
+      keys.forEach(key => {
+        const tile = document.createElement('div');
+        tile.className = 'tile';
+        const v = document.createElement('video');
+        v.controls = true; v.autoplay = true; v.muted = true; v.playsInline = true;
+        const p = document.createElement('p'); p.className = 'title'; p.textContent = key;
+        const m = document.createElement('div'); m.className='muted'; m.textContent='(включен mute)';
+
+        const src = `/hls/${key}.m3u8`;
+        if (Hls.isSupported()) {
+          const hls = new Hls({lowLatencyMode:false, backBufferLength:30});
+          hls.loadSource(src);
+          hls.attachMedia(v);
+        } else {
+          v.src = src; // Safari
+        }
+        tile.appendChild(v); tile.appendChild(p); tile.appendChild(m);
+        grid.appendChild(tile);
+      });
+    })();
+  </script>
+HTML
+
+# Вставим массив ключей в конец index.html
+printf "\n<script>window.PLAYER_KEYS=%s;</script>\n" \
+  "$(printf '['; i=0; for k in $KEYS_NORM; do printf '%s\"%s\"' $([[ $i -gt 0 ]] && echo , || true) "$k"; i=$((i+1)); done; printf ']')" \
+  >> "$INDEX"
+
+log "index.html generated with $(echo "$KEYS_NORM" | wc -w) player(s)"
+
+# Подсказка в Telegram (опционально)
+if [[ -n "${BOT_TOKEN}" && -n "${CHAT_ID}" && -n "${KEYS_NORM}" ]]; then
+  text="OBS настройки:\nURL: rtmp://$(hostname -i)/live\n"
+  for k in $KEYS_NORM; do text="${text}Key: ${k}\n"; done
+  curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+       --data-urlencode "chat_id=${CHAT_ID}" \
+       --data-urlencode "text=${text}" >/dev/null || true
+  log "Sent OBS hints to Telegram…"
+fi
+
+# Старт nginx (фоново) и «подвешиваем» логи в STDOUT
+nginx
+log "nginx started"
+
+# гарантируем наличие логов
+touch /var/log/nginx/error.log /var/log/nginx/access.log /var/log/nginx/rtmp_access.log
+# можно появляющиеся rec.log любого стрима тоже тащить
+tail -F /var/log/nginx/error.log /var/log/nginx/access.log /var/log/nginx/rtmp_access.log /var/hls_rec/*/rec.log 2>/dev/null &
+wait -n
