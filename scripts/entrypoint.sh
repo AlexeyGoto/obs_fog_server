@@ -2,7 +2,6 @@
 set -euo pipefail
 
 LOG="/app/log/entrypoint.log"
-# Ведём stdout/stderr в логи контейнера и файл
 exec > >(tee -a "$LOG") 2>&1
 
 echo "=== [ENTRYPOINT] $(date '+%F %T') start ==="
@@ -15,16 +14,12 @@ PUBLIC_HOST="${PUBLIC_HOST:-}"
 SEG_TIME="${SEG_TIME:-5}"
 RECORD_SEGMENTS="${RECORD_SEGMENTS:-84}"
 
-# фикс лимита дескрипторов (exec_* хуки nginx-rtmp это любят)
 ulimit -n 1024 || true
-
 mkdir -p /var/hls /var/hls_rec /tmp/videos /app/obs_profiles /app/www
 echo "OK" > /app/www/healthz
 
 detect_public_host() {
-  if [ -n "$PUBLIC_HOST" ]; then
-    echo "$PUBLIC_HOST"; return
-  fi
+  if [ -n "$PUBLIC_HOST" ]; then echo "$PUBLIC_HOST"; return; fi
   PH="$(curl -fsS --max-time 3 http://ifconfig.me || true)"
   if [ -n "$PH" ]; then echo "$PH"; else hostname -i | awk '{print $1}'; fi
 }
@@ -33,7 +28,6 @@ echo "[ENTRYPOINT] PUBLIC HOST: $PHOST"
 
 IFS=',' read -r -a KEYS <<< "${STREAM_KEYS}"
 
-# Генерация index.html (всегда)
 echo "[ENTRYPOINT] Generating /app/www/index.html ..."
 {
   cat <<'HTML_HEAD'
@@ -49,7 +43,7 @@ echo "[ENTRYPOINT] Generating /app/www/index.html ..."
     .grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(360px,1fr)); gap: 16px; }
     .tile { border: 1px solid #ddd; border-radius: 12px; padding: 12px; box-shadow: 0 2px 10px rgba(0,0,0,.04); }
     .title { margin: 0 0 8px; font-weight: 600; font-size: 14px; color: #333; }
-    .video-js { width: 100%; height: 202px; border-radius: 8px; overflow: hidden; }
+    .video-js { width: 100%; height: 202px; border-radius: 8px; overflow: hidden; background:#000; }
     code { background: #f6f6f6; padding: 1px 6px; border-radius: 6px; }
   </style>
 </head>
@@ -64,8 +58,9 @@ HTML_HEAD
     CNT=$((CNT+1))
     cat <<HTML_TILE
     <div class="tile">
-      <div class="title">Ключ: <code>${KTRIM}</code></div>
-      <video id="v_${KTRIM}" class="video-js vjs-default-skin" controls preload="auto" playsinline>
+      <div class="title">Ключ: <code>${KTRIM}</code> — RTMP: <code>rtmp://${PHOST}:1935/live</code></div>
+      <video id="v_${KTRIM}" class="video-js vjs-default-skin"
+             controls preload="auto" muted autoplay playsinline data-setup="{}">
         <source src="/hls/${KTRIM}.m3u8" type="application/x-mpegURL" />
       </video>
     </div>
@@ -75,7 +70,7 @@ HTML_TILE
   if [ "$CNT" -eq 0 ]; then
     cat <<HTML_EMPTY
     <div class="tile"><div class="title">Ключи не заданы</div>
-      <p>Задай переменную <code>STREAM_KEYS</code> (через запятую). Пример: <code>STREAM_KEYS=12952x11,pc7</code></p>
+      <p>Задай <code>STREAM_KEYS</code> (через запятую). Пример: <code>STREAM_KEYS=12952x11,pc7</code></p>
       <p>RTMP: <code>rtmp://${PHOST}:1935/live</code></p>
     </div>
 HTML_EMPTY
@@ -84,6 +79,12 @@ HTML_EMPTY
   cat <<'HTML_TAIL'
   </div>
   <script src="https://vjs.zencdn.net/7.21.1/video.min.js"></script>
+  <script>
+    // На всякий случай ручная инициализация, если авто-инициализация не сработает
+    document.querySelectorAll('video.video-js').forEach(function(el){
+      try { window.videojs(el); } catch(e) { console && console.warn(e); }
+    });
+  </script>
 </body>
 </html>
 HTML_TAIL
@@ -91,7 +92,6 @@ HTML_TAIL
 
 ls -l /app/www || true
 
-# OBS профили + отправка в Telegram
 make_and_send_profile() {
   local KEY="$1"
   local PROF="LowVPS-RTMP-${KEY}"
@@ -101,10 +101,8 @@ make_and_send_profile() {
   cat > "$DIR/basic.ini" <<EOF
 [General]
 Name=${PROF}
-
 [Output]
 Mode=Advanced
-
 [AdvOut]
 Encoder=obs_x264
 Bitrate=500
@@ -112,11 +110,9 @@ KeyframeIntervalSec=2
 Rescale=false
 TrackIndex=1
 ApplyServiceSettings=false
-
 [Audio]
 SampleRate=48000
 ChannelSetup=Stereo
-
 [Video]
 BaseCX=854
 BaseCY=480
@@ -161,21 +157,16 @@ for KEY in "${KEYS[@]}"; do
 done
 echo "[ENTRYPOINT] Profiles processed: $SENT"
 
-
+# Санитизация nginx.conf (BOM/CRLF)
 echo "[ENTRYPOINT] sanitize nginx.conf (strip BOM + CRLF)..."
-# 1) убрать CRLF, если вдруг попали
 sed -i 's/\r$//' /etc/nginx/nginx.conf || true
-
-# 2) убрать BOM (EF BB BF) в начале файла, если есть
 if [ "$(head -c 3 /etc/nginx/nginx.conf | od -An -t x1 | tr -d ' \n')" = "efbbbf" ]; then
   tail -c +4 /etc/nginx/nginx.conf > /tmp/nginx.conf.nobom && mv /tmp/nginx.conf.nobom /etc/nginx/nginx.conf
   echo "[ENTRYPOINT] BOM removed from nginx.conf"
 fi
 
-
-
 echo "[ENTRYPOINT] nginx -t:"
-nginx -t || { echo "[ENTRYPOINT] nginx -t FAILED! Dumping config:"; nginx -T || true; exit 1; }
+nginx -t || { echo "[ENTRYPOINT] nginx -t FAILED!"; nginx -T || true; exit 1; }
 
 echo "[ENTRYPOINT] Dump full nginx config (nginx -T) for debugging:"
 nginx -T || true

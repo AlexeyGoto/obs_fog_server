@@ -16,17 +16,22 @@ START="/var/run/rec-${SAFE_KEY}.start"
 LOG="$DIR/rec.log"
 OUT_DIR="/tmp/videos"; mkdir -p "$OUT_DIR"
 
+FFMPEG="$(command -v ffmpeg || true)"
+[ -n "$FFMPEG" ] || { echo "ffmpeg not found" >&2; exit 1; }
+
 MAX_TG=$((50*1024*1024))
 trim_log_if_big(){ [ -f "$LOG" ] || return 0; local sz; sz=$(stat -c%s "$LOG" 2>/dev/null||echo 0); [ "$sz" -ge $((10*1024*1024)) ] && : > "$LOG" || true; }
 log(){ echo "$(date '+%F %T'): $*" >> "$LOG"; trim_log_if_big; }
 safe_send_msg(){ local text="$1"; [ -n "$BOT_TOKEN" ] && [ -n "$CHAT_ID" ] && curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" --data-urlencode "chat_id=${CHAT_ID}" --data-urlencode "text=${text}" >/dev/null 2>&1 || true; }
+
+log "stop for key=$KEY dir=$DIR"
 
 if [ -f "$PID" ]; then
   P=$(cat "$PID" 2>/dev/null || true)
   if [ -n "${P:-}" ] && kill -0 "$P" 2>/dev/null; then
     log "stopping recorder PID $P"
     kill -INT "$P" 2>/dev/null || true
-    for i in {1..10}; do kill -0 "$P" 2>/dev/null || break; sleep 1; done
+    for i in {1..15}; do kill -0 "$P" 2>/dev/null || break; sleep 1; done
     kill -0 "$P" 2>/dev/null && { log "force kill $P"; kill -9 "$P" 2>/dev/null || true; }
   fi
   rm -f "$PID"
@@ -44,17 +49,16 @@ if [ "${#CANDS[@]}" -eq 0 ]; then
   exit 0
 fi
 
-# дождаться финального сегмента
 last="${CANDS[-1]}"
 if [ -n "$last" ]; then
-  tries=12
+  tries=18
   while [ $tries -gt 0 ]; do
-    s1=$(stat -c%s "$last" 2>/dev/null || echo 0); sleep 0.7
+    s1=$(stat -c%s "$last" 2>/dev/null || echo 0); sleep 0.8
     s2=$(stat -c%s "$last" 2>/dev/null || echo 0)
     [ "$s1" -eq "$s2" ] && [ "$s2" -gt 0 ] && break
     tries=$((tries-1))
   done
-  log "last segment settled: $(basename "$last")"
+  log "last segment settled: $(basename "$last") size=$(stat -c%s "$last" 2>/dev/null || echo 0)"
 fi
 
 STAGE="$(mktemp -d "/tmp/stage_${SAFE_KEY}_XXXX")"
@@ -83,16 +87,15 @@ if [ -f "$START" ]; then
   S_TS=$(cat "$START" 2>/dev/null || echo '')
   [ -n "$S_TS" ] && START_FMT="$(date -d "@$S_TS" +"%d.%m.%Y %H.%M.%S")" || START_FMT="$(date -r "$FIRST" +"%d.%m.%Y %H.%M.%S")"
 else
-  START_FMT="$(date -r "$FIRST" +"%d.%m.%Y %H.%M.%S")"
+  START_FMT="$(date -r "$FIRST" +"%d.%m.%Y %H.%М.%S")"
 fi
 END_FMT="$(date -r "$LASTF" +"%d.%m.%Y %H.%M.%S")"
-
-OUTF="$OUT_DIR/${SAFE_KEY}_$(date +%F_%H-%M-%S).mp4"
 CAPTION=$(printf "ПК: %s\nВремя начала: %s\nВремя окончания: %s" "$KEY" "$START_FMT" "$END_FMT")
 
+OUTF="$OUT_DIR/${SAFE_KEY}_$(date +%F_%H-%M-%S).mp4"
 log "concat $(wc -l < "$LIST") video-segments -> $OUTF"
 
-ffmpeg -hide_banner -loglevel error -nostats \
+"$FFMPEG" -hide_banner -loglevel error -nostats \
   -f concat -safe 0 -i "$LIST" \
   -map 0:v:0 -an -fflags +genpts \
   -c:v copy -movflags +faststart \

@@ -14,6 +14,9 @@ PID="/var/run/rec-${SAFE_KEY}.pid"
 START="/var/run/rec-${SAFE_KEY}.start"
 LOG="$DIR/rec.log"
 
+FFMPEG="$(command -v ffmpeg || true)"
+[ -n "$FFMPEG" ] || { echo "ffmpeg not found" >&2; exit 1; }
+
 trim_log_if_big(){ [ -f "$LOG" ] || return 0; local sz; sz=$(stat -c%s "$LOG" 2>/dev/null||echo 0); [ "$sz" -ge $((10*1024*1024)) ] && : > "$LOG" || true; }
 
 mkdir -p "$DIR"
@@ -23,8 +26,7 @@ date +%s > "$START"
 if [ -f "$PID" ]; then
   P=$(cat "$PID" 2>/dev/null || true)
   if [ -n "${P:-}" ] && kill -0 "$P" 2>/dev/null; then
-    echo "$(date '+%F %T') recorder already running for $SAFE_KEY (PID=$P)" >> "$LOG"
-    exit 0
+    echo "$(date '+%F %T') recorder already running for $SAFE_KEY (PID=$P)" >> "$LOG"; exit 0
   else
     rm -f "$PID"
   fi
@@ -32,7 +34,9 @@ fi
 
 rm -f "$DIR"/*.ts "$DIR"/*.m3u8 2>/dev/null || true
 
-nohup ffmpeg -hide_banner -loglevel warning -nostats \
+echo "$(date '+%F %T') using ffmpeg: $FFMPEG" >> "$LOG"
+
+nohup "$FFMPEG" -hide_banner -loglevel warning -nostats \
   -i "rtmp://127.0.0.1:1935/live/${KEY}" \
   -c copy \
   -f hls \
