@@ -38,19 +38,35 @@ log "ENV PROFILE: ${PROFILE_OUT_RES} @ ${PROFILE_FPS}fps, ${PROFILE_BITRATE_KBPS
 KEYS_NORM="$(echo "$KEYS" | tr ',;' '  ' | xargs 2>/dev/null || true)"
 KEY_COUNT=$(echo "$KEYS_NORM" | wc -w | xargs || echo 0)
 
+BASIC_AUTH_ENABLED="false"
+if [[ "${BASIC_AUTH,,}" == "true" ]]; then
+  BASIC_AUTH_ENABLED="true"
+fi
+
 # Configure basic auth (writes nginx include snippet)
 AUTH_SNIPPET=/etc/nginx/conf.d/location_auth.conf
 mkdir -p /etc/nginx/conf.d
+HASHED_PASS=""
 
-if [[ "${BASIC_AUTH,,}" == "true" ]]; then
+if [[ "$BASIC_AUTH_ENABLED" == "true" ]]; then
   log "Basic auth enabled for /"
-  HASHED_PASS="$(openssl passwd -apr1 "$BASIC_AUTH_PASS")"
-  printf "%s:%s\n" "$BASIC_AUTH_USER" "$HASHED_PASS" > /etc/nginx/.htpasswd
-  cat > "$AUTH_SNIPPET" <<'NGINX'
+  if ! HASHED_PASS=$(openssl passwd -apr1 "$BASIC_AUTH_PASS" 2>/dev/null); then
+    warn "OpenSSL failed to hash password, trying htpasswd fallback"
+    HASHED_PASS=$(htpasswd -nbBC 10 "$BASIC_AUTH_USER" "$BASIC_AUTH_PASS" 2>/dev/null | cut -d: -f2- || true)
+  fi
+  if [[ -z "$HASHED_PASS" ]]; then
+    warn "Failed to hash password; disabling basic auth"
+    BASIC_AUTH_ENABLED="false"
+  else
+    printf "%s:%s\n" "$BASIC_AUTH_USER" "$HASHED_PASS" > /etc/nginx/.htpasswd
+    cat > "$AUTH_SNIPPET" <<'NGINX'
 auth_basic "Restricted";
 auth_basic_user_file /etc/nginx/.htpasswd;
 NGINX
-else
+  fi
+fi
+
+if [[ "$BASIC_AUTH_ENABLED" != "true" ]]; then
   log "Basic auth disabled for /"
   : > /etc/nginx/.htpasswd
   cat > "$AUTH_SNIPPET" <<'NGINX'
@@ -239,8 +255,6 @@ cat >> "$INDEX" <<'HTML'
 </html>
 HTML
 
-# Append player list script already included above
-
 # Build OBS profile packages per key
 PROFILE_BASE=/tmp/obs_profiles
 rm -rf "$PROFILE_BASE"
@@ -257,7 +271,7 @@ KEYINT=$(normalize_int "$PROFILE_KEYINT_SEC" 2)
 GOP=$((FPS * KEYINT))
 FF_BITRATE=$((BITRATE * 5))
 [[ "$FF_BITRATE" -gt 0 ]] || FF_BITRATE=$((BITRATE))
-USE_AUTH=$([[ "${BASIC_AUTH,,}" == "true" ]] && echo true || echo false)
+USE_AUTH=$([[ "$BASIC_AUTH_ENABLED" == "true" ]] && echo true || echo false)
 
 PACKAGE_COUNT=0
 for KEY in $KEYS_NORM; do
@@ -370,15 +384,20 @@ EOF
 EOF
 
   {
-    echo "Сервер: ${STREAM_SERVER}";
-    echo "Ключ: ${KEY}";
-    if [[ "${BASIC_AUTH,,}" == "true" ]]; then
+    echo "Server: ${STREAM_SERVER}";
+    echo "Stream key: ${KEY}";
+    if [[ "$BASIC_AUTH_ENABLED" == "true" ]]; then
       echo "Basic-Auth: ${BASIC_AUTH_USER} / ${BASIC_AUTH_PASS}";
     fi
-    echo "Профиль: ${PROFILE_OUT_RES} @ ${PROFILE_FPS}fps, ${PROFILE_BITRATE_KBPS}kbps";
+    echo "Profile: ${PROFILE_OUT_RES} @ ${PROFILE_FPS}fps, ${PROFILE_BITRATE_KBPS}kbps";
   } > "$KEY_DIR/README.txt"
 
-  zip -j "$PROFILE_BASE/${SAFE_KEY}_profile.zip" "$KEY_DIR"/* >/dev/null
+  ZIP_PATH="$PROFILE_BASE/${SAFE_KEY}_profile.zip"
+  if ! zip -j "$ZIP_PATH" "$KEY_DIR"/* >/dev/null 2>&1; then
+    warn "Failed to create OBS profile package for ${KEY}"
+    rm -f "$ZIP_PATH"
+    continue
+  fi
   PACKAGE_COUNT=$((PACKAGE_COUNT + 1))
   log "Profile package prepared for key '${KEY}' -> ${SAFE_KEY}_profile.zip"
 done
@@ -391,8 +410,8 @@ if [[ -n "${BOT_TOKEN}" && -n "${CHAT_ID}" && $PACKAGE_COUNT -gt 0 ]]; then
     [[ -n "$SAFE_KEY" ]] || SAFE_KEY="stream"
     ZIP_PATH="$PROFILE_BASE/${SAFE_KEY}_profile.zip"
     [[ -f "$ZIP_PATH" ]] || { warn "Zip package missing for $KEY"; continue; }
-    CAPTION="Профиль OBS: ${KEY}\nСервер: ${STREAM_SERVER}"
-    if [[ "${BASIC_AUTH,,}" == "true" ]]; then
+    CAPTION="OBS profile: ${KEY}\nServer: ${STREAM_SERVER}"
+    if [[ "$BASIC_AUTH_ENABLED" == "true" ]]; then
       CAPTION+="\nAuth: ${BASIC_AUTH_USER}/${BASIC_AUTH_PASS}"
     fi
     RESP=$(curl -s -F chat_id="${CHAT_ID}" -F caption="${CAPTION}" -F document=@"${ZIP_PATH}" "${TELEGRAM_URL}" || true)
@@ -406,7 +425,7 @@ fi
 if [[ -n "${BOT_TOKEN}" && -n "${CHAT_ID}" && -n "${KEYS_NORM}" ]]; then
   text="OBS stream settings:\nURL: ${STREAM_SERVER}\n"
   for k in $KEYS_NORM; do text="${text}Key: ${k}\n"; done
-  if [[ "${BASIC_AUTH,,}" == "true" ]]; then
+  if [[ "$BASIC_AUTH_ENABLED" == "true" ]]; then
     text="${text}Auth: ${BASIC_AUTH_USER}/${BASIC_AUTH_PASS}\n"
   fi
   curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
