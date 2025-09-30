@@ -161,6 +161,19 @@ for KEY in "${KEYS[@]}"; do
 done
 echo "[ENTRYPOINT] Profiles processed: $SENT"
 
+
+echo "[ENTRYPOINT] sanitize nginx.conf (strip BOM + CRLF)..."
+# 1) убрать CRLF, если вдруг попали
+sed -i 's/\r$//' /etc/nginx/nginx.conf || true
+
+# 2) убрать BOM (EF BB BF) в начале файла, если есть
+if [ "$(head -c 3 /etc/nginx/nginx.conf | od -An -t x1 | tr -d ' \n')" = "efbbbf" ]; then
+  tail -c +4 /etc/nginx/nginx.conf > /tmp/nginx.conf.nobom && mv /tmp/nginx.conf.nobom /etc/nginx/nginx.conf
+  echo "[ENTRYPOINT] BOM removed from nginx.conf"
+fi
+
+
+
 echo "[ENTRYPOINT] nginx -t:"
 nginx -t || { echo "[ENTRYPOINT] nginx -t FAILED! Dumping config:"; nginx -T || true; exit 1; }
 
