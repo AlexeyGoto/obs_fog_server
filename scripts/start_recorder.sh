@@ -1,15 +1,14 @@
-#!/usr/bin/env bash
-# Запускается из nginx-rtmp: exec_publish  /usr/local/bin/start_recorder.sh $app $name
+﻿#!/usr/bin/env bash
+# Invoked by nginx-rtmp: exec_publish /usr/local/bin/start_recorder.sh $app $name
 set -euo pipefail
 
 APP="$1"
 STREAM="$2"
 
-# Безопасное имя на ФС
+# Sanitize stream name to safe characters only
 SAFE_STREAM="$(printf '%s' "$STREAM" | tr -cd 'A-Za-z0-9._-')"
 [[ -n "$SAFE_STREAM" ]] || SAFE_STREAM="stream_$(date +%s)"
 
-# Папка с HLS-сегментами отдельного рекордера
 RECROOT="/var/hls_rec"
 STREAM_DIR="$RECROOT/$SAFE_STREAM"
 
@@ -17,12 +16,11 @@ PIDFILE="/var/run/rec-${SAFE_STREAM}.pid"
 STARTFILE="/var/run/rec-${SAFE_STREAM}.start"
 FFLOG="$STREAM_DIR/rec.log"
 
-# --- управление размером окна записи по ENV ---
-: "${RECORDER_WINDOW_SECONDS:=300}"   # последние 5 минут (по умолчанию)
-: "${HLS_SEGMENT_SECONDS:=2}"         # длительность сегмента
+# Recorder window and HLS segment sizing
+: "${RECORDER_WINDOW_SECONDS:=300}"
+: "${HLS_SEGMENT_SECONDS:=2}"
 LIST_SIZE=$(( RECORDER_WINDOW_SECONDS / HLS_SEGMENT_SECONDS ))
 [[ $LIST_SIZE -lt 5 ]] && LIST_SIZE=5
-# ----------------------------------------------
 
 MAX_LOG_BYTES=$((10*1024*1024))
 trim_log(){ local f="$1"; [[ -f "$f" ]] || return 0; local s; s=$(stat -c%s "$f" 2>/dev/null || echo 0); [[ $s -ge $MAX_LOG_BYTES ]] && : > "$f" || true; }
@@ -31,7 +29,7 @@ log(){ echo "$(date '+%F %T') [start] $*" >> "$FFLOG"; trim_log "$FFLOG"; }
 mkdir -p "$STREAM_DIR"
 : > "$FFLOG"
 
-# Уже запущен?
+# Abort if a recorder is already running
 if [[ -f "$PIDFILE" ]]; then
   PID=$(cat "$PIDFILE" 2>/dev/null || echo "")
   if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
@@ -41,14 +39,13 @@ if [[ -f "$PIDFILE" ]]; then
   fi
 fi
 
-# Чистим предыдущие следы (важно!)
+# Remove leftovers from previous sessions
 rm -f "$STREAM_DIR"/*.ts "$STREAM_DIR"/*.m3u8 2>/dev/null || true
 
-# Сохраняем время старта (epoch)
+# Persist start timestamp (epoch)
 date +%s > "$STARTFILE"
 
-# ВАЖНО: нулевой CPU — пишем HLS-сегменты в copy-режиме.
-# Монотонная нумерация файлов, delete старых сегментов, размер плейлиста = окно записи.
+# Capture the RTMP stream into rolling HLS segments without re-encoding
 nohup ffmpeg -y -hide_banner -loglevel warning -nostats \
   -i "rtmp://127.0.0.1/${APP}/${STREAM}" \
   -c copy \

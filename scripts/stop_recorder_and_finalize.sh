@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-# Запускается из nginx-rtmp: exec_publish_done /usr/local/bin/stop_recorder_and_finalize.sh $app $name
+﻿#!/usr/bin/env bash
+# Invoked by nginx-rtmp: exec_publish_done /usr/local/bin/stop_recorder_and_finalize.sh $app $name
 set -euo pipefail
 
 APP="$1"
@@ -26,7 +26,7 @@ MAX_LOG_BYTES=$((10*1024*1024))
 trim_log(){ local f="$1"; [[ -f "$f" ]] || return 0; local s; s=$(stat -c%s "$f" 2>/dev/null || echo 0); [[ $s -ge $MAX_LOG_BYTES ]] && : > "$f" || true; }
 log(){ echo "$(date '+%F %T') [stop] $*" >> "$FFLOG"; trim_log "$FFLOG"; }
 
-# Нежно останавливаем ffmpeg
+# Stop ffmpeg if it is still running
 if [[ -f "$PIDFILE" ]]; then
   PID=$(cat "$PIDFILE" 2>/dev/null || echo "")
   if [[ -n "$PID" ]] && kill -0 "$PID" 2>/dev/null; then
@@ -43,17 +43,18 @@ sleep 1; sync
 REC_M3U8="$STREAM_DIR/${SAFE_STREAM}.m3u8"
 if [[ ! -f "$REC_M3U8" ]]; then
   log "playlist not found: $REC_M3U8"
-  [[ -n "$BOT_TOKEN" && -n "$CHAT_ID" ]] && \
-  curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-       --data-urlencode "chat_id=${CHAT_ID}" \
-       --data-urlencode "text=$(printf 'ПК: %s\nВремя начала: -\nВремя окончания: -\n\nПлейлист не найден.' "$STREAM")" >/dev/null || true
+  if [[ -n "$BOT_TOKEN" && -n "$CHAT_ID" ]]; then
+    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+         --data-urlencode "chat_id=${CHAT_ID}" \
+         --data-urlencode "text=$(printf 'Stream: %s\nStart: -\nStop: -\n\nStream playlist not found.' "$STREAM")" >/dev/null || true
+  fi
   rm -f "$STREAM_DIR"/*.ts 2>/dev/null || true
   rmdir --ignore-fail-on-non-empty "$STREAM_DIR" 2>/dev/null || true
   [[ -f "$STARTFILE" ]] && rm -f "$STARTFILE" || true
   exit 0
 fi
 
-# Собираем абсолютные пути сегментов из плейлиста
+# Build a list of actual segment files referenced by the playlist
 MAPFILE="$(mktemp)"
 awk 'BEGIN{FS="\r"} /^[^#]/ {print $1}' "$REC_M3U8" > "$MAPFILE"
 sed -i -e "s#^#${STREAM_DIR}/#; s#//#/#g" "$MAPFILE"
@@ -61,15 +62,16 @@ awk 'system("[ -f \""$0"\" ]")==0{print}' "$MAPFILE" > "${MAPFILE}.ok" || true
 
 if [[ ! -s "${MAPFILE}.ok" ]]; then
   log "no segments present per playlist"
-  [[ -n "$BOT_TOKEN" && -n "$CHAT_ID" ]] && \
-  curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-       --data-urlencode "chat_id=${CHAT_ID}" \
-       --data-urlencode "text=$(printf 'ПК: %s\nВремя начала: -\nВремя окончания: -\n\nСегменты отсутствуют.' "$STREAM")" >/dev/null || true
+  if [[ -n "$BOT_TOKEN" && -n "$CHAT_ID" ]]; then
+    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+         --data-urlencode "chat_id=${CHAT_ID}" \
+         --data-urlencode "text=$(printf 'Stream: %s\nStart: -\nStop: -\n\nRecorded segments were not found.' "$STREAM")" >/dev/null || true
+  fi
   rm -f "$MAPFILE" "${MAPFILE}.ok"
   exit 0
 fi
 
-# Ждём, чтобы последний сегмент «дописался»
+# Wait until the last segment is fully written to disk
 wait_settle(){
   local f="$1" tries=16
   while (( tries-- > 0 )); do
@@ -83,7 +85,7 @@ wait_settle(){
 LAST_SEG="$(tail -n1 "${MAPFILE}.ok")"
 [[ -n "$LAST_SEG" ]] && wait_settle "$LAST_SEG"
 
-# Делаем стабильный снапшот (hardlink), чтобы никакая чистка не помешала
+# Stage segments via hardlinks (fall back to copy on failure)
 STAGE_DIR="$(mktemp -d "/tmp/stage_${SAFE_STREAM}_XXXX")"
 nl -ba "${MAPFILE}.ok" | while read -r N P; do
   printf -v FN "%06d.ts" "$N"
@@ -94,14 +96,16 @@ rm -f "$MAPFILE" "${MAPFILE}.ok"
 STAGE_LIST=$(ls -1 "$STAGE_DIR"/*.ts 2>/dev/null | sort -V || true)
 if [[ -z "${STAGE_LIST:-}" ]]; then
   log "stage empty"
-  [[ -n "$BOT_TOKEN" && -n "$CHAT_ID" ]] && \
-  curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
-       --data-urlencode "chat_id=${CHAT_ID}" \
-       --data-urlencode "text=$(printf 'ПК: %s\nВремя начала: -\nВремя окончания: -\n\nНе удалось подготовить сегменты.' "$STREAM")" >/dev/null || true
-  rm -rf "$STAGE_DIR"; exit 0
+  if [[ -n "$BOT_TOKEN" && -n "$CHAT_ID" ]]; then
+    curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+         --data-urlencode "chat_id=${CHAT_ID}" \
+         --data-urlencode "text=$(printf 'Stream: %s\nStart: -\nStop: -\n\nSegments disappeared before processing.' "$STREAM")" >/dev/null || true
+  fi
+  rm -rf "$STAGE_DIR"
+  exit 0
 fi
 
-# Отбрасываем «чисто аудио» хвост (оставляем до последнего файла, где есть видео)
+# Drop trailing segments that do not contain video (for stalled encoders)
 has_video(){ ffprobe -v error -select_streams v:0 -show_entries stream=codec_name -of csv=p=0 "$1" >/dev/null 2>&1; }
 LAST_WITH_VIDEO=""
 for f in $(echo "$STAGE_LIST" | tac); do
@@ -117,7 +121,7 @@ while IFS= read -r f; do echo "file '$f'" >> "$LISTFILE"; done <<< "$STAGE_LIST"
 FIRST_STAGED=$(echo "$STAGE_LIST" | head -n1)
 LAST_STAGED=$(echo "$STAGE_LIST" | tail -n1)
 
-# Таймштампы
+# Resolve start/stop timestamps for notifications
 if [[ -f "$STARTFILE" ]]; then
   START_TS=$(cat "$STARTFILE" 2>/dev/null || echo '')
   if [[ -n "${START_TS:-}" ]]; then
@@ -126,15 +130,15 @@ if [[ -f "$STARTFILE" ]]; then
     START_FMT=$(date -r "$FIRST_STAGED" +"%d.%m.%Y %H.%M.%S")
   fi
 else
-  START_FMT=$(date -r "$FIRST_STAGED" +"%d.%m.%Y %H.%M.%S")
+    START_FMT=$(date -r "$FIRST_STAGED" +"%d.%m.%Y %H.%M.%S")
 fi
 END_FMT=$(date -r "$LAST_STAGED" +"%d.%m.%Y %H.%M.%S")
-CAPTION=$(printf "ПК: %s\nВремя начала: %s\nВремя окончания: %s" "$STREAM" "$START_FMT" "$END_FMT")
+CAPTION=$(printf "Stream: %s\nStart: %s\nStop: %s" "$STREAM" "$START_FMT" "$END_FMT")
 
 OUT_FILE="$OUTPUT_DIR/${SAFE_STREAM}_$(date +%F_%H-%M-%S).mp4"
-log "concat $(wc -l < "$LISTFILE") segments → $OUT_FILE"
+log "concat $(wc -l < "$LISTFILE") segments into $OUT_FILE"
 
-# 1) Remux (copy) — самый дешёвый путь
+# 1) Remux (copy) to keep original quality whenever possible
 ffmpeg -hide_banner -loglevel error -nostats \
   -f concat -safe 0 -i "$LISTFILE" \
   -fflags +genpts \
@@ -148,9 +152,9 @@ if [[ -f "$OUT_FILE" ]] && ffprobe -v error -select_streams v:0 -show_entries st
   probe_ok=1
 fi
 
-# 2) Если copy-ремультиплекс не собрал валидное видео — делаем «починку» (перекод) только по необходимости
+# 2) Transcode fallback if remux produced a broken file
 if [[ "$probe_ok" -ne 1 ]]; then
-  log "remux invalid → transcode"
+  log "remux invalid -> transcode"
   TMP_OUT="${OUT_FILE%.mp4}.fixed.mp4"; rm -f "$TMP_OUT" 2>/dev/null || true
   ffmpeg -hide_banner -loglevel error -nostats \
     -f concat -safe 0 -i "$LISTFILE" \
@@ -170,7 +174,7 @@ if [[ "$probe_ok" -ne 1 ]]; then
   fi
 fi
 
-# 3) Telegram
+# 3) Telegram notifications with the resulting file
 if [[ -f "$OUT_FILE" && -n "$BOT_TOKEN" && -n "$CHAT_ID" ]]; then
   SIZE=$(stat -c%s "$OUT_FILE" 2>/dev/null || echo 0)
   MAX_TELEGRAM_BYTES=$((50*1024*1024))
@@ -179,23 +183,23 @@ if [[ -f "$OUT_FILE" && -n "$BOT_TOKEN" && -n "$CHAT_ID" ]]; then
     RESP=$(curl -s -F chat_id="$CHAT_ID" -F "caption=$CAPTION" -F "video=@$OUT_FILE" \
                  "https://api.telegram.org/bot${BOT_TOKEN}/sendVideo" 2>&1 || true)
     echo "$RESP" | grep -q '"ok":true' || {
-      log "sendVideo failed → sendDocument"
+      log "sendVideo failed -> sendDocument"
       RESP2=$(curl -s -F chat_id="$CHAT_ID" -F "caption=$CAPTION" -F "document=@$OUT_FILE" \
                     "https://api.telegram.org/bot${BOT_TOKEN}/sendDocument" 2>&1 || true)
       echo "$RESP2" | grep -q '"ok":true' || \
         curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
              --data-urlencode "chat_id=${CHAT_ID}" \
-             --data-urlencode "text=$(printf 'ПК: %s\nВремя начала: %s\nВремя окончания: %s\n\nФайл не отправился (размер: %s байт).' "$STREAM" "$START_FMT" "$END_FMT" "$SIZE")" >/dev/null || true
+             --data-urlencode "text=$(printf 'Stream: %s\nStart: %s\nStop: %s\n\nFailed to upload recording (size: %s bytes).' "$STREAM" "$START_FMT" "$END_FMT" "$SIZE")" >/dev/null || true
     }
   else
     log "too large (${SIZE})"
     curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
          --data-urlencode "chat_id=${CHAT_ID}" \
-         --data-urlencode "text=$(printf 'ПК: %s\nВремя начала: %s\nВремя окончания: %s\n\nФайл слишком большой (размер: %s байт).' "$STREAM" "$START_FMT" "$END_FMT" "$SIZE")" >/dev/null || true
+         --data-urlencode "text=$(printf 'Stream: %s\nStart: %s\nStop: %s\n\nRecording is too large for Telegram (size: %s bytes).' "$STREAM" "$START_FMT" "$END_FMT" "$SIZE")" >/dev/null || true
   fi
 fi
 
-# 4) Уборка
+# 4) Cleanup temporary files and intermediate artifacts
 rm -rf "$STAGE_DIR" 2>/dev/null || true
 [[ -f "$STARTFILE" ]] && rm -f "$STARTFILE" || true
 rm -f "$STREAM_DIR"/*.ts 2>/dev/null || true
@@ -204,3 +208,6 @@ rm -f "$OUT_FILE" 2>/dev/null || true
 
 log "done"
 exit 0
+
+
+

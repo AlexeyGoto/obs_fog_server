@@ -1,45 +1,46 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -euo pipefail
 
 log(){ echo "[boot] $*"; }
 
-# ========= ENV c разумными дефолтами =========
-: "${KEYS:=}"                         # "pc1,pc2" или "pc1 pc2"
-: "${BASIC_AUTH:=false}"              # true|false
+# ========= Environment defaults =========
+: "${KEYS:=}"                        # "pc1,pc2" -> "pc1 pc2"
+: "${BASIC_AUTH:=false}"             # true|false
 : "${BASIC_AUTH_USER:=admin}"
 : "${BASIC_AUTH_PASS:=admin}"
-: "${BOT_TOKEN:=}"                    # опционально
-: "${CHAT_ID:=}"                      # опционально
+: "${BOT_TOKEN:=}"                   # Telegram bot token
+: "${CHAT_ID:=}"                     # Telegram chat id
 
-# Профиль — только для подсказки и сообщений
+# ========= Default transcoding profile =========
 : "${PROFILE_OUT_RES:=854x480}"
 : "${PROFILE_FPS:=30}"
 : "${PROFILE_BITRATE_KBPS:=500}"
 : "${PROFILE_KEYINT_SEC:=2}"
-# ============================================
+# ===============================================
 
 log "ENV KEYS=${KEYS}"
 log "ENV PROFILE: ${PROFILE_OUT_RES} @ ${PROFILE_FPS}fps, ${PROFILE_BITRATE_KBPS}kbps, keyint=${PROFILE_KEYINT_SEC}s"
 
-# Нормализуем KEYS -> пробелы
+# Normalize KEYS -> whitespace separated tokens
 KEYS_NORM="$(echo "$KEYS" | tr ',;' '  ' | xargs 2>/dev/null || true)"
 
-# Basic auth (если включён)
+# Configure basic auth if requested
 if [[ "${BASIC_AUTH,,}" == "true" ]]; then
   log "Basic auth enabled for /"
-  printf "%s:$(openssl passwd -apr1 "%s")\n" "$BASIC_AUTH_USER" "$BASIC_AUTH_PASS" > /etc/nginx/.htpasswd
+  HASHED_PASS="$(openssl passwd -apr1 "$BASIC_AUTH_PASS")"
+  printf "%s:%s\n" "$BASIC_AUTH_USER" "$HASHED_PASS" > /etc/nginx/.htpasswd
 else
-  # Пустой файл, чтобы nginx не ругался на отсутствие
+  # Empty file keeps nginx happy when auth is disabled
   : > /etc/nginx/.htpasswd
 fi
 
-# Генерим index.html с плитками
+# Generate index.html with a simple grid of players
 INDEX=/usr/share/nginx/html/index.html
 mkdir -p /usr/share/nginx/html
 
 cat > "$INDEX" <<'HTML'
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <title>PC Monitor</title>
@@ -59,7 +60,7 @@ cat > "$INDEX" <<'HTML'
   <h1>PC Monitor (HLS)</h1>
   <div class="grid" id="grid"></div>
   <script>
-    // Ключи прокидываются через window.PLAYER_KEYS (см. ниже)
+    // Provide your own list by defining window.PLAYER_KEYS before this script runs.
     (function(){
       const keys = (window.PLAYER_KEYS || []);
       const grid = document.getElementById('grid');
@@ -69,7 +70,7 @@ cat > "$INDEX" <<'HTML'
         const v = document.createElement('video');
         v.controls = true; v.autoplay = true; v.muted = true; v.playsInline = true;
         const p = document.createElement('p'); p.className = 'title'; p.textContent = key;
-        const m = document.createElement('div'); m.className='muted'; m.textContent='(включен mute)';
+        const m = document.createElement('div'); m.className='muted'; m.textContent='(Click unmute to hear audio)';
 
         const src = `/hls/${key}.m3u8`;
         if (Hls.isSupported()) {
@@ -84,31 +85,32 @@ cat > "$INDEX" <<'HTML'
       });
     })();
   </script>
+</body>
+</html>
 HTML
 
-# Вставим массив ключей в конец index.html
+# Append player list to index.html
 printf "\n<script>window.PLAYER_KEYS=%s;</script>\n" \
   "$(printf '['; i=0; for k in $KEYS_NORM; do printf '%s\"%s\"' $([[ $i -gt 0 ]] && echo , || true) "$k"; i=$((i+1)); done; printf ']')" \
   >> "$INDEX"
 
 log "index.html generated with $(echo "$KEYS_NORM" | wc -w) player(s)"
 
-# Подсказка в Telegram (опционально)
+# Send OBS connection details to Telegram (if configured)
 if [[ -n "${BOT_TOKEN}" && -n "${CHAT_ID}" && -n "${KEYS_NORM}" ]]; then
-  text="OBS настройки:\nURL: rtmp://$(hostname -i)/live\n"
+  text="OBS stream settings:\nURL: rtmp://$(hostname -i)/live\n"
   for k in $KEYS_NORM; do text="${text}Key: ${k}\n"; done
   curl -s -X POST "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
        --data-urlencode "chat_id=${CHAT_ID}" \
        --data-urlencode "text=${text}" >/dev/null || true
-  log "Sent OBS hints to Telegram…"
+  log "Sent OBS hints to Telegram"
 fi
 
-# Старт nginx (фоново) и «подвешиваем» логи в STDOUT
+# Start nginx and stream logs to STDOUT
 nginx
 log "nginx started"
 
-# гарантируем наличие логов
+# Follow logs of nginx and recorder processes
 touch /var/log/nginx/error.log /var/log/nginx/access.log /var/log/nginx/rtmp_access.log
-# можно появляющиеся rec.log любого стрима тоже тащить
 tail -F /var/log/nginx/error.log /var/log/nginx/access.log /var/log/nginx/rtmp_access.log /var/hls_rec/*/rec.log 2>/dev/null &
 wait -n
