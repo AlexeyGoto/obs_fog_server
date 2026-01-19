@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>OBS RTMP → 7 минут → Telegram</h1>
+
+<div class="grid">
+  <div class="card">
+    <h3>Добавить ПК</h3>
+    <form method="post" action="/pcs">
+      <label>Название</label>
+      <input name="name" required />
+      <button class="btn" type="submit">Добавить</button>
+    </form>
+    <p class="muted" style="margin-top:10px;">
+      После добавления открой карточку ПК и возьми <b>Stream Key</b> для OBS.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3>Настройки</h3>
+    <form method="post" action="/settings">
+      <div class="row">
+        <label><input type="checkbox" name="save_videos" {% if settings.save_videos %}checked{% endif %}/> save_videos</label>
+        <span class="muted">Собирать и отправлять видео после окончания стрима</span>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" name="auto_delete" {% if settings.auto_delete %}checked{% endif %}/> auto_delete</label>
+        <span class="muted">Удалять MP4 после отправки/уведомления</span>
+      </div>
+      <div class="row">
+        <label><input type="checkbox" name="strict_keys" {% if settings.strict_keys %}checked{% endif %}/> strict_keys</label>
+        <span class="muted">Разрешать publish только известным stream_key</span>
+      </div>
+      <button class="btn" type="submit">Сохранить</button>
+    </form>
+  </div>
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <h3>ПК</h3>
+  {% if pcs|length == 0 %}
+    <p class="muted">Пока нет ни одного ПК.</p>
+  {% else %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Название</th>
+          <th>Статус</th>
+          <th>Stream key</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for pc in pcs %}
+        <tr>
+          <td>{{ pc.id }}</td>
+          <td>{{ pc.name }}</td>
+          <td>
+            {% if pc.is_live %}
+              <span class="badge ok">LIVE</span>
+            {% else %}
+              <span class="badge">OFF</span>
+            {% endif %}
+          </td>
+          <td><span class="mono">{{ pc.stream_key }}</span></td>
+          <td><a class="btn" href="/pc/{{ pc.id }}">Открыть</a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+
+<div class="card" style="margin-top:16px;">
+  <h3>Очередь отправки (последние задания)</h3>
+  {% if jobs|length == 0 %}
+    <p class="muted">Пока нет заданий.</p>
+  {% else %}
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Stream</th>
+          <th>Status</th>
+          <th>Message</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for j in jobs %}
+        <tr>
+          <td>{{ j.id }}</td>
+          <td><span class="mono">{{ j.stream_key }}</span></td>
+          <td><span class="badge{% if j.status=='done' %} ok{% endif %}{% if j.status=='failed' %} bad{% endif %}">{{ j.status }}</span></td>
+          <td class="muted">{{ j.message or '' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+
+{% endblock %}

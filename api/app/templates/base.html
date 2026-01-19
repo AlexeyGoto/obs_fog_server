@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title or "OBS RTMP -> Telegram" }}</title>
+  <style>
+    :root { --bg:#0b0f14; --card:#111823; --text:#e6edf3; --muted:#9aa4b2; --accent:#2f81f7; --danger:#ff4d4d; --ok:#37c97a; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; background:var(--bg); color:var(--text); }
+    a { color:var(--accent); text-decoration:none; }
+    a:hover { text-decoration:underline; }
+    header { padding:16px 20px; border-bottom:1px solid #1c2736; display:flex; gap:12px; align-items:center; justify-content:space-between; }
+    header .brand { font-weight:700; }
+    main { padding:20px; max-width:1100px; margin:0 auto; }
+    .grid { display:grid; grid-template-columns: 1fr; gap:12px; }
+    @media (min-width: 920px){ .grid { grid-template-columns: 2fr 1fr; } }
+    .card { background:var(--card); border:1px solid #1c2736; border-radius:14px; padding:14px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+    .muted { color:var(--muted); }
+    .pill { padding:4px 10px; border-radius:999px; font-size:12px; border:1px solid #253449; }
+    .pill.ok { border-color: rgba(55,201,122,.4); color:var(--ok); }
+    .pill.off { border-color: rgba(154,164,178,.35); color:var(--muted); }
+    .pill.bad { border-color: rgba(255,77,77,.35); color:var(--danger); }
+    input[type=text] { background:#0e1520; border:1px solid #263247; color:var(--text); padding:10px 12px; border-radius:10px; width:100%; }
+    button { background:var(--accent); border:none; color:white; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:600; }
+    button.secondary { background:#223046; }
+    button.danger { background:var(--danger); }
+    table { width:100%; border-collapse:collapse; }
+    th, td { padding:10px 8px; border-bottom:1px solid #1c2736; text-align:left; }
+    th { color:var(--muted); font-weight:600; }
+    code { background:#0e1520; border:1px solid #263247; padding:2px 6px; border-radius:8px; }
+    .small { font-size:12px; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="row">
+    <div class="brand"><a href="/">OBS RTMP → 7 минут → Telegram</a></div>
+    <div class="muted small">HTTP: <code>/</code> • HLS: <code>/hls/stream_key/index.m3u8</code></div>
+  </div>
+  <div class="muted small">{{ now_human }}</div>
+</header>
+<main>
+  {% block content %}{% endblock %}
+</main>
+</body>
+</html>

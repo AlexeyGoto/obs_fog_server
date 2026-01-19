@@ -1,0 +1,54 @@
+services:
+  nginx:
+    image: alfg/nginx-rtmp:latest
+    restart: unless-stopped
+    ports:
+      - "1935:1935"   # RTMP ingest (OBS)
+      - "8080:8080"   # HTTP gateway (dashboard + HLS)
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./data/hls:/data/hls
+    depends_on:
+      - api
+
+  api:
+    build:
+      context: ./api
+    restart: unless-stopped
+    environment:
+      DATABASE_PATH: /data/db/app.db
+      DATA_DIR: /data
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+      DEFAULT_SAVE_VIDEOS: "true"
+      DEFAULT_AUTO_DELETE: "true"
+      DEFAULT_STRICT_KEYS: "true"
+    volumes:
+      - ./data:/data
+    expose:
+      - "8000"
+
+  worker:
+    build:
+      context: ./worker
+    restart: unless-stopped
+    environment:
+      DATABASE_PATH: /data/db/app.db
+      DATA_DIR: /data
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_ADMIN_ID: ${TELEGRAM_ADMIN_ID}
+    volumes:
+      - ./data:/data
+    depends_on:
+      - api
+
+  bot:
+    build:
+      context: ./bot
+    restart: unless-stopped
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_ADMIN_ID: ${TELEGRAM_ADMIN_ID}
+      API_BASE_URL: http://api:8000
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+    depends_on:
+      - api
