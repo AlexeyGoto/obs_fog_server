@@ -6,12 +6,35 @@ import sqlite3
 import subprocess
 import tempfile
 import time
+from contextlib import contextmanager
 from typing import Dict, List, Optional, Tuple
 
 import requests
 
+try:
+    import psycopg2
+    from psycopg2.extras import RealDictCursor
+except Exception:  # pragma: no cover
+    psycopg2 = None  # type: ignore
+    RealDictCursor = None  # type: ignore
+
 
 DATABASE_PATH = os.getenv("DATABASE_PATH", "/data/db/app.db")
+
+# Postgres (optional): either DATABASE_URL or POSTGRESQL_* split variables
+DATABASE_URL = (os.getenv("DATABASE_URL") or "").strip()
+POSTGRESQL_HOST = (os.getenv("POSTGRESQL_HOST") or "").strip()
+POSTGRESQL_PORT = (os.getenv("POSTGRESQL_PORT") or "5432").strip()
+POSTGRESQL_USER = (os.getenv("POSTGRESQL_USER") or "").strip()
+POSTGRESQL_PASSWORD = (os.getenv("POSTGRESQL_PASSWORD") or "").strip()
+POSTGRESQL_DBNAME = (os.getenv("POSTGRESQL_DBNAME") or "").strip()
+
+if DATABASE_URL:
+    DB_REF = DATABASE_URL
+elif POSTGRESQL_HOST and POSTGRESQL_USER and POSTGRESQL_DBNAME:
+    DB_REF = f"host={POSTGRESQL_HOST} port={POSTGRESQL_PORT} dbname={POSTGRESQL_DBNAME} user={POSTGRESQL_USER} password={POSTGRESQL_PASSWORD}"
+else:
+    DB_REF = DATABASE_PATH
 DATA_DIR = os.getenv("DATA_DIR", "/data")
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID", "").strip()
@@ -24,16 +47,101 @@ def _now_ts() -> int:
     return int(time.time())
 
 
-def _db_conn() -> sqlite3.Connection:
+def _is_postgres(db_ref: str) -> bool:
+    ref = (db_ref or "").strip().lower()
+    if not ref:
+        return False
+    if ref.startswith("postgres://") or ref.startswith("postgresql://"):
+        return True
+    if "host=" in ref and "dbname=" in ref:
+        return True
+    return False
+
+
+def _sqlite_conn() -> sqlite3.Connection:
     os.makedirs(os.path.dirname(DATABASE_PATH), exist_ok=True)
     conn = sqlite3.connect(DATABASE_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
 
+@contextmanager
+def _pg_conn():
+    if psycopg2 is None:
+        raise RuntimeError("psycopg2 is not installed")
+    conn = psycopg2.connect(DB_REF)
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def _ensure_schema() -> None:
+    # api normally creates schema; worker does this as a safety net
+    if not _is_postgres(DB_REF):
+        return
+    with _pg_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pcs (
+                    id SERIAL PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    stream_key TEXT NOT NULL UNIQUE,
+                    created_at BIGINT NOT NULL
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS streams (
+                    stream_key TEXT PRIMARY KEY,
+                    is_live BOOLEAN NOT NULL,
+                    last_publish_at BIGINT,
+                    last_unpublish_at BIGINT
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                """
+            )
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS jobs (
+                    id SERIAL PRIMARY KEY,
+                    stream_key TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at BIGINT NOT NULL,
+                    updated_at BIGINT NOT NULL,
+                    message TEXT,
+                    output_path TEXT
+                );
+                """
+            )
+
+
 def _setting_bool(key: str, default: bool) -> bool:
     try:
-        conn = _db_conn()
+        if _is_postgres(DB_REF):
+            with _pg_conn() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    cur.execute("SELECT value FROM settings WHERE key=%s", (key,))
+                    row = cur.fetchone()
+                    if not row:
+                        return default
+                    val = str(row["value"]).strip().lower()
+                    return val in {"1", "true", "yes", "y", "on"}
+
+        conn = _sqlite_conn()
         row = conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
         conn.close()
         if not row:
@@ -45,7 +153,30 @@ def _setting_bool(key: str, default: bool) -> bool:
 
 
 def _claim_next_job() -> Optional[Dict]:
-    conn = _db_conn()
+    if _is_postgres(DB_REF):
+        with _pg_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    """
+                    WITH cte AS (
+                        SELECT id FROM jobs
+                        WHERE status='queued'
+                        ORDER BY id ASC
+                        FOR UPDATE SKIP LOCKED
+                        LIMIT 1
+                    )
+                    UPDATE jobs
+                    SET status='running', updated_at=%s
+                    FROM cte
+                    WHERE jobs.id = cte.id
+                    RETURNING jobs.*
+                    """,
+                    (_now_ts(),),
+                )
+                row = cur.fetchone()
+                return dict(row) if row else None
+
+    conn = _sqlite_conn()
     try:
         conn.execute("BEGIN IMMEDIATE")
         row = conn.execute("SELECT * FROM jobs WHERE status='queued' ORDER BY id ASC LIMIT 1").fetchone()
@@ -67,7 +198,16 @@ def _claim_next_job() -> Optional[Dict]:
 
 
 def _job_update(job_id: int, status: str, message: str = "", output_path: Optional[str] = None) -> None:
-    conn = _db_conn()
+    if _is_postgres(DB_REF):
+        with _pg_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE jobs SET status=%s, updated_at=%s, message=%s, output_path=%s WHERE id=%s",
+                    (status, _now_ts(), message, output_path, job_id),
+                )
+        return
+
+    conn = _sqlite_conn()
     try:
         conn.execute(
             "UPDATE jobs SET status=?, updated_at=?, message=?, output_path=? WHERE id=?",
@@ -282,7 +422,8 @@ def handle_job(job: Dict) -> None:
 
 
 def main() -> None:
-    print("Worker started")
+    _ensure_schema()
+    print(f"Worker started (db={'postgres' if _is_postgres(DB_REF) else 'sqlite'})")
     while True:
         job = _claim_next_job()
         if not job:

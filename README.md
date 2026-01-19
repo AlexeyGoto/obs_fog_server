@@ -24,6 +24,20 @@ cp .env.example .env
 - `TELEGRAM_ADMIN_ID` — chat id администратора
 - `PUBLIC_BASE_URL` — публичный URL панели, например `http://SERVER_IP:8080`
 
+### (Опционально) PostgreSQL вместо SQLite
+По умолчанию проект использует SQLite (`./data/db/app.db`).
+
+Если хочешь использовать внешний PostgreSQL (как у тебя) — добавь в `.env`:
+- либо `DATABASE_URL=postgresql://...`
+- либо набор переменных:
+  - `POSTGRESQL_HOST`
+  - `POSTGRESQL_PORT`
+  - `POSTGRESQL_USER`
+  - `POSTGRESQL_PASSWORD`
+  - `POSTGRESQL_DBNAME`
+
+Проект автоматически переключится на Postgres при наличии `DATABASE_URL` или `POSTGRESQL_HOST`.
+
 3) Запуск:
 ```bash
 docker compose up -d --build

@@ -28,7 +28,8 @@ app = FastAPI(title="obs-rtmp-telegram")
 templates = Jinja2Templates(directory="/app/app/templates")
 
 CFG = load_settings()
-init_db(CFG.database_path, CFG.default_save_videos, CFG.default_auto_delete, CFG.default_strict_keys)
+init_db(CFG.db_ref, CFG.default_save_videos, CFG.default_auto_delete, CFG.default_strict_keys)
+print(f"[DB] backend={CFG.db_backend}")
 
 
 def _now_human() -> str:
@@ -41,7 +42,7 @@ def _bool_from_str(val: str) -> bool:
 
 
 def _settings_bools() -> Dict[str, bool]:
-    raw = settings_all(CFG.database_path)
+    raw = settings_all(CFG.db_ref)
     return {
         "save_videos": _bool_from_str(raw.get("save_videos", "true")),
         "auto_delete": _bool_from_str(raw.get("auto_delete", "true")),
@@ -70,8 +71,8 @@ def _rtmp_url(request: Request) -> str:
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    pcs = pc_list(CFG.database_path)
-    jobs = jobs_recent(CFG.database_path, limit=30)
+    pcs = pc_list(CFG.db_ref)
+    jobs = jobs_recent(CFG.db_ref, limit=30)
     return templates.TemplateResponse(
         "index.html",
         {
@@ -87,13 +88,13 @@ async def index(request: Request):
 
 @app.post("/pcs")
 async def add_pc(name: str = Form(...)):
-    pc_create(CFG.database_path, name)
+    pc_create(CFG.db_ref, name)
     return RedirectResponse("/", status_code=303)
 
 
 @app.get("/pc/{pc_id}", response_class=HTMLResponse)
 async def pc_page(request: Request, pc_id: int):
-    pc = pc_get(CFG.database_path, pc_id)
+    pc = pc_get(CFG.db_ref, pc_id)
     if not pc:
         return PlainTextResponse("PC not found", status_code=404)
 
@@ -118,9 +119,9 @@ async def update_settings(
     strict_keys: str | None = Form(default=None),
 ):
     # checkboxes: present => on
-    setting_set(CFG.database_path, "save_videos", "true" if save_videos is not None else "false")
-    setting_set(CFG.database_path, "auto_delete", "true" if auto_delete is not None else "false")
-    setting_set(CFG.database_path, "strict_keys", "true" if strict_keys is not None else "false")
+    setting_set(CFG.db_ref, "save_videos", "true" if save_videos is not None else "false")
+    setting_set(CFG.db_ref, "auto_delete", "true" if auto_delete is not None else "false")
+    setting_set(CFG.db_ref, "strict_keys", "true" if strict_keys is not None else "false")
     return RedirectResponse("/", status_code=303)
 
 
@@ -128,12 +129,12 @@ async def update_settings(
 
 @app.get("/api/pcs")
 async def api_pcs():
-    return pc_list(CFG.database_path)
+    return pc_list(CFG.db_ref)
 
 
 @app.get("/api/pc/{pc_id}")
 async def api_pc(pc_id: int):
-    pc = pc_get(CFG.database_path, pc_id)
+    pc = pc_get(CFG.db_ref, pc_id)
     if not pc:
         return JSONResponse({"error": "not_found"}, status_code=404)
     return pc
@@ -152,13 +153,13 @@ async def api_set_settings(payload: Dict[str, Any]):
         return JSONResponse({"error": "bad_key"}, status_code=400)
     if value not in {"true", "false"}:
         return JSONResponse({"error": "bad_value"}, status_code=400)
-    setting_set(CFG.database_path, key, value)
+    setting_set(CFG.db_ref, key, value)
     return {"ok": True, "key": key, "value": value}
 
 
 @app.get("/api/live")
 async def api_live():
-    return {"live": live_streams(CFG.database_path)}
+    return {"live": live_streams(CFG.db_ref)}
 
 
 # -------- RTMP callbacks (nginx-rtmp) --------
@@ -168,14 +169,14 @@ async def on_publish(request: Request):
     form = await request.form()
     stream_key = str(form.get("name") or "").strip()
 
-    strict = _bool_from_str(setting_get(CFG.database_path, "strict_keys", "true"))
+    strict = _bool_from_str(setting_get(CFG.db_ref, "strict_keys", "true"))
     if strict:
-        pc = pc_by_stream_key(CFG.database_path, stream_key)
+        pc = pc_by_stream_key(CFG.db_ref, stream_key)
         if not pc:
             # Any non-2xx should reject publish
             return PlainTextResponse("forbidden", status_code=403)
 
-    stream_set_live(CFG.database_path, stream_key, True)
+    stream_set_live(CFG.db_ref, stream_key, True)
     return PlainTextResponse("ok")
 
 
@@ -184,10 +185,10 @@ async def on_publish_done(request: Request):
     form = await request.form()
     stream_key = str(form.get("name") or "").strip()
 
-    stream_set_live(CFG.database_path, stream_key, False)
+    stream_set_live(CFG.db_ref, stream_key, False)
 
-    save_videos = _bool_from_str(setting_get(CFG.database_path, "save_videos", "true"))
+    save_videos = _bool_from_str(setting_get(CFG.db_ref, "save_videos", "true"))
     if save_videos:
-        job_create(CFG.database_path, stream_key, message="stream ended")
+        job_create(CFG.db_ref, stream_key, message="stream ended")
 
     return PlainTextResponse("ok")
