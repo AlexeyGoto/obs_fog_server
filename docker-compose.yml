@@ -23,8 +23,7 @@ services:
     volumes:
       - ./data/db:/data/db
       - ./data/videos:/data/videos
-    depends_on:
-      - nginx
+    # ВАЖНО: api НЕ зависит от nginx (убрали цикл)
 
   worker:
     build:
@@ -49,4 +48,3 @@ services:
       - .env
     depends_on:
       - api
-
