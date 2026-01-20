@@ -1,10 +1,11 @@
 services:
   nginx:
-    image: alfg/nginx-rtmp:latest
+    build:
+      context: ./nginx
     restart: unless-stopped
     ports:
       - "1935:1935"   # RTMP ingest (OBS)
-      - "8080:8080"   # HTTP gateway (dashboard + HLS)
+      - "8080:8080"   # HTTP gateway (web + HLS)
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./data/hls:/data/hls
@@ -15,52 +16,37 @@ services:
     build:
       context: ./api
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      DATABASE_PATH: ${DATABASE_PATH:-/data/db/app.db}
-      DATABASE_URL: ${DATABASE_URL:-}
-      POSTGRESQL_HOST: ${POSTGRESQL_HOST:-}
-      POSTGRESQL_PORT: ${POSTGRESQL_PORT:-5432}
-      POSTGRESQL_USER: ${POSTGRESQL_USER:-}
-      POSTGRESQL_PASSWORD: ${POSTGRESQL_PASSWORD:-}
-      POSTGRESQL_DBNAME: ${POSTGRESQL_DBNAME:-}
-      DATA_DIR: /data
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
-      DEFAULT_SAVE_VIDEOS: "true"
-      DEFAULT_AUTO_DELETE: "true"
-      DEFAULT_STRICT_KEYS: "true"
+      HLS_BASE_URL: ${HLS_BASE_URL:-http://nginx:8080/hls}
     volumes:
-      - ./data:/data
-    expose:
-      - "8000"
+      - ./data/db:/data/db
+      - ./data/videos:/data/videos
+    depends_on:
+      - nginx
 
   worker:
     build:
       context: ./worker
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      DATABASE_PATH: ${DATABASE_PATH:-/data/db/app.db}
-      DATABASE_URL: ${DATABASE_URL:-}
-      POSTGRESQL_HOST: ${POSTGRESQL_HOST:-}
-      POSTGRESQL_PORT: ${POSTGRESQL_PORT:-5432}
-      POSTGRESQL_USER: ${POSTGRESQL_USER:-}
-      POSTGRESQL_PASSWORD: ${POSTGRESQL_PASSWORD:-}
-      POSTGRESQL_DBNAME: ${POSTGRESQL_DBNAME:-}
-      DATA_DIR: /data
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      TELEGRAM_ADMIN_ID: ${TELEGRAM_ADMIN_ID}
+      HLS_BASE_URL: ${HLS_BASE_URL:-http://nginx:8080/hls}
     volumes:
-      - ./data:/data
+      - ./data/db:/data/db
+      - ./data/videos:/data/videos
     depends_on:
       - api
+      - nginx
 
   bot:
     build:
       context: ./bot
     restart: unless-stopped
-    environment:
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
-      TELEGRAM_ADMIN_ID: ${TELEGRAM_ADMIN_ID}
-      API_BASE_URL: http://api:8000
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:8080}
+    env_file:
+      - .env
     depends_on:
       - api
+

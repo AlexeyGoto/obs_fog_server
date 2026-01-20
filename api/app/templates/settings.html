@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="max-w-3xl">
+  <div class="text-2xl font-semibold">Настройки</div>
+  <div class="text-sm text-slate-400 mt-1">Привяжите Telegram, чтобы получать клипы после завершения стрима.</div>
+
+  <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+    <div class="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+      <div class="text-lg font-semibold">Telegram</div>
+      <div class="mt-2 text-sm text-slate-300">
+        1) Откройте вашего бота в Telegram
+        <br/>2) Отправьте команду: <span class="font-mono">/link {{ link_code }}</span>
+      </div>
+
+      <div class="mt-4 text-sm">
+        <div class="text-slate-400">Привязанный Telegram ID</div>
+        <div class="font-mono text-slate-200">{{ user.telegram_id if user.telegram_id else 'не привязан' }}</div>
+      </div>
+    </div>
+
+    <div class="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+      <div class="text-lg font-semibold">Отправка клипов</div>
+      <form method="post" class="mt-4 space-y-4">
+        <label class="flex items-center gap-2">
+          <input type="checkbox" name="keep_clips" {% if user.keep_clips %}checked{% endif %} />
+          <span class="text-sm text-slate-300">Готовить клип (последние 7 минут) после завершения стрима</span>
+        </label>
+
+        <label class="flex items-center gap-2">
+          <input type="checkbox" name="auto_delete" {% if user.auto_delete %}checked{% endif %} />
+          <span class="text-sm text-slate-300">Удалять mp4 после попытки отправки в Telegram</span>
+        </label>
+
+        <div>
+          <div class="text-sm text-slate-300">Лимит Telegram (МБ)</div>
+          <input name="max_telegram_mb" type="number" min="1" max="2000" value="{{ user.max_telegram_mb }}" class="mt-1 w-40 px-3 py-2 rounded-xl bg-slate-950 border border-slate-700" />
+          <div class="text-xs text-slate-500 mt-1">Для ботов обычно 50 МБ. Если файл больше — будет уведомление без файла.</div>
+        </div>
+
+        <button class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 font-semibold">Сохранить</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="mt-6 bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+    <div class="text-lg font-semibold">Команды бота</div>
+    <div class="mt-2 text-sm text-slate-300 space-y-1">
+      <div><span class="font-mono">/link CODE</span> — привязать Telegram к аккаунту</div>
+      <div><span class="font-mono">/pcs</span> — список ваших ПК</div>
+      <div><span class="font-mono">/obs PC_ID</span> — настройки OBS для ПК</div>
+      <div><span class="font-mono">/live PC_ID</span> — ссылка на live HLS</div>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -3,46 +3,41 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{{ title or "OBS RTMP -> Telegram" }}</title>
-  <style>
-    :root { --bg:#0b0f14; --card:#111823; --text:#e6edf3; --muted:#9aa4b2; --accent:#2f81f7; --danger:#ff4d4d; --ok:#37c97a; }
-    * { box-sizing:border-box; }
-    body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; background:var(--bg); color:var(--text); }
-    a { color:var(--accent); text-decoration:none; }
-    a:hover { text-decoration:underline; }
-    header { padding:16px 20px; border-bottom:1px solid #1c2736; display:flex; gap:12px; align-items:center; justify-content:space-between; }
-    header .brand { font-weight:700; }
-    main { padding:20px; max-width:1100px; margin:0 auto; }
-    .grid { display:grid; grid-template-columns: 1fr; gap:12px; }
-    @media (min-width: 920px){ .grid { grid-template-columns: 2fr 1fr; } }
-    .card { background:var(--card); border:1px solid #1c2736; border-radius:14px; padding:14px; }
-    .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-    .muted { color:var(--muted); }
-    .pill { padding:4px 10px; border-radius:999px; font-size:12px; border:1px solid #253449; }
-    .pill.ok { border-color: rgba(55,201,122,.4); color:var(--ok); }
-    .pill.off { border-color: rgba(154,164,178,.35); color:var(--muted); }
-    .pill.bad { border-color: rgba(255,77,77,.35); color:var(--danger); }
-    input[type=text] { background:#0e1520; border:1px solid #263247; color:var(--text); padding:10px 12px; border-radius:10px; width:100%; }
-    button { background:var(--accent); border:none; color:white; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:600; }
-    button.secondary { background:#223046; }
-    button.danger { background:var(--danger); }
-    table { width:100%; border-collapse:collapse; }
-    th, td { padding:10px 8px; border-bottom:1px solid #1c2736; text-align:left; }
-    th { color:var(--muted); font-weight:600; }
-    code { background:#0e1520; border:1px solid #263247; padding:2px 6px; border-radius:8px; }
-    .small { font-size:12px; }
-  </style>
+  <title>{{ title if title else 'OBS Fog Service' }}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.14"></script>
 </head>
-<body>
-<header>
-  <div class="row">
-    <div class="brand"><a href="/">OBS RTMP → 7 минут → Telegram</a></div>
-    <div class="muted small">HTTP: <code>/</code> • HLS: <code>/hls/stream_key/index.m3u8</code></div>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div class="max-w-6xl mx-auto px-4 py-6">
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-slate-800 flex items-center justify-center font-semibold">OBS</div>
+        <div>
+          <div class="text-lg font-semibold leading-none">OBS Fog Service</div>
+          <div class="text-xs text-slate-400">RTMP → HLS (7 мин) → Telegram</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        {% if user %}
+          <a class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm" href="/">Панель</a>
+          <a class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm" href="/settings">Настройки</a>
+          <a class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm" href="/logout">Выход</a>
+        {% else %}
+          <a class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm" href="/login">Вход</a>
+          <a class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-sm" href="/register">Регистрация</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="mt-6">
+      {% block content %}{% endblock %}
+    </div>
+
+    <div class="mt-10 text-xs text-slate-500">
+      <div>Подсказка: OBS → Settings → Stream → Service = Custom</div>
+      <div>Server: <span class="text-slate-300">rtmp://SERVER_IP:1935/live</span> • Stream Key: <span class="text-slate-300">ключ из карточки ПК</span></div>
+    </div>
   </div>
-  <div class="muted small">{{ now_human }}</div>
-</header>
-<main>
-  {% block content %}{% endblock %}
-</main>
 </body>
 </html>

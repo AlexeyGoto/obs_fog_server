@@ -1,88 +1,99 @@
-# OBS RTMP -> 7 минут -> Telegram (Docker)
+# OBS Fog Service v2 (RTMP → HLS → последние 7 минут → Telegram)
 
-Этот проект принимает **RTMP**-стримы из OBS (80+ ПК), держит **кольцевой буфер последних 7 минут** в HLS-сегментах без перекодирования и **после завершения стрима**:
+Сервис для **80+ ПК**:
+- OBS на каждом ПК стримит по RTMP на VPS.
+- NGINX-RTMP генерирует HLS и держит «скользящее окно» последних ~7 минут.
+- После окончания стрима NGINX дергает hook `on_publish_done`, мы ставим задачу в очередь.
+- Worker склеивает HLS → MP4 (без перекодирования, `-c copy`).
+- Если файл <= лимита Telegram (по умолчанию 50 МБ) — отправляем владельцу.
+- Если больше — отправляем владельцу уведомление «слишком большой файл».
+- После попытки отправки (успех/ошибка/слишком большой) mp4 удаляется, если включено `auto_delete`.
 
-- пытается собрать MP4 из последних сегментов;
-- если MP4 **<= 50 МБ** — отправляет видео в Telegram боту;
-- если MP4 **> 50 МБ** — отправляет **уведомление**, что файл слишком большой (и видео не отправлено).
+## Архитектура
+- `nginx` — RTMP ingest (1935) + HTTP (8080) + HLS раздача
+- `api` — FastAPI: сайт, авторизация, управление ПК, hooks, bot API
+- `worker` — обработка очереди: ffmpeg + Telegram sendVideo
+- `bot` — Telegram бот (long polling) для команд `/pcs`, `/obs`, `/live`, `/link CODE`
 
-После обработки папка сегментов удаляется, а MP4 удаляется если включено `auto_delete`.
+## Быстрый старт (VPS)
 
-## Порты
-- `1935/tcp` — RTMP ingest (OBS)
-- `8080/tcp` — HTTP шлюз: **панель управления (FastAPI)** + HLS (`/hls/...`)
-
-## Быстрый запуск
-
-1) Скопируй пример окружения:
+### 1) Установка Docker (Ubuntu 22.04/24.04)
 ```bash
-cp .env.example .env
+apt-get update -y
+apt-get install -y ca-certificates curl gnupg
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+  $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
+  > /etc/apt/sources.list.d/docker.list
+apt-get update -y
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+systemctl enable --now docker
 ```
 
-2) Заполни в `.env`:
-- `TELEGRAM_BOT_TOKEN` — токен бота
-- `TELEGRAM_ADMIN_ID` — chat id администратора
-- `PUBLIC_BASE_URL` — публичный URL панели, например `http://SERVER_IP:8080`
+### 2) Разворачивание проекта
+```bash
+mkdir -p /opt/obs_fog_service
+cd /opt/obs_fog_service
+# сюда положи содержимое репозитория (git clone или scp)
+cp .env.example .env
+nano .env
+```
 
-### (Опционально) PostgreSQL вместо SQLite
-По умолчанию проект использует SQLite (`./data/db/app.db`).
+Минимально в `.env` нужно:
+- `APP_BASE_URL=http://<ваш-ip>:8080`
+- `JWT_SECRET=...`
+- `BOT_API_TOKEN=...`
+- `TELEGRAM_BOT_TOKEN=...`
+- `DATABASE_URL=sqlite:////data/db/app.db`
 
-Если хочешь использовать внешний PostgreSQL (как у тебя) — добавь в `.env`:
-- либо `DATABASE_URL=postgresql://...`
-- либо набор переменных:
-  - `POSTGRESQL_HOST`
-  - `POSTGRESQL_PORT`
-  - `POSTGRESQL_USER`
-  - `POSTGRESQL_PASSWORD`
-  - `POSTGRESQL_DBNAME`
-
-Проект автоматически переключится на Postgres при наличии `DATABASE_URL` или `POSTGRESQL_HOST`.
-
-3) Запуск:
+### 3) Старт
 ```bash
 docker compose up -d --build
 ```
 
-4) Открой панель:
-- `http://SERVER_IP:8080/`
+Открыть сайт:
+- `http://<ваш-ip>:8080`
 
-## Настройка OBS на ПК
-В OBS: **Settings → Stream**
-- Service: Custom...
-- Server: `rtmp://SERVER_IP/live`
-- Stream Key: ключ, который ты получил после добавления ПК в панели (или через `/pcs` в боте)
+### 4) Открыть порты
+- RTMP: `1935/tcp`
+- Web/HLS: `8080/tcp`
 
-Рекомендация (для ровных сегментов):
-- Keyframe Interval: 2 сек (или Auto)
+## Настройка OBS (на ПК)
+В OBS выбери **Custom RTMP**:
+- **Server:** `rtmp://<ваш-ip>:1935/live`
+- **Stream Key:** из карточки ПК на сайте.
 
-## Что умеет панель
-- Добавить ПК (генерирует stream_key)
-- Список ПК со статусом LIVE/OFF
-- Страница ПК: RTMP URL, stream key, и live-плеер (HLS)
-- Настройки:
-  - `save_videos` — собирать/отправлять видео после окончания стрима
-  - `auto_delete` — удалять MP4 после отправки/уведомления
-  - `strict_keys` — разрешать publish только для stream_key, которые есть в базе
-
-## Команды Telegram бота
-- `/start` — помощь
+## Telegram
+1) На сайте → **Настройки** → возьми `CODE`.
+2) В Telegram боте: `/link CODE`
+3) Команды:
 - `/pcs` — список ПК
-- `/pc <id>` — настройки OBS для конкретного ПК + ссылка на страницу
-- `/streams` — кто сейчас LIVE
-- `/savevideos on|off` — (только admin) включить/выключить отправку видео
-- `/autodelete on|off` — (только admin) удалять MP4 после обработки
-- `/strictkeys on|off` — (только admin) включить/выключить строгую проверку ключей
+- `/obs PC_ID` — RTMP+key
+- `/live PC_ID` — ссылка на live
 
-## Данные на диске
-- `./data/db/app.db` — sqlite база
-- `./data/hls/<stream_key>/...` — HLS сегменты (удаляются после обработки)
-- `./data/out/` — временные MP4 (удаляются если `auto_delete=true`)
-
-## Логи
+## Почему не подключается OBS / FFmpeg пишет Input/output error
+### Проверки
+На VPS:
 ```bash
-docker compose logs -f api
-docker compose logs -f worker
-docker compose logs -f bot
-docker compose logs -f nginx
+ss -lntp | grep 1935
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8080/
 ```
+Тест RTMP локально:
+```bash
+ffmpeg -re -f lavfi -i testsrc=size=1280x720:rate=30 -f lavfi -i sine=frequency=1000 \
+  -c:v libx264 -preset veryfast -tune zerolatency -c:a aac -f flv \
+  rtmp://127.0.0.1:1935/live/<STREAM_KEY>
+```
+Если тест идет, а OBS снаружи нет — проверь провайдера/фаервол, что порт 1935 доступен.
+
+## Ограничение Telegram 50 МБ
+Если клип больше лимита, сервис отправляет **только уведомление владельцу** и **не держит файл** (при `auto_delete=true`).
+
+## Масштаб (80+ ПК)
+- Ingest 80×500 кбит/с = ~40 Мбит/с входящего трафика (плюс накладные)
+- CPU в основном тратится на disk IO и `ffmpeg -c copy` (без перекодирования)
+- По RAM обычно достаточно 1–2 ГБ под сервис, но лучше 2–4 ГБ из-за кешей и пиков IO.
 

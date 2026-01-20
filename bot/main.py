@@ -2,192 +2,156 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Any, Dict, List, Optional, Tuple
-from urllib.parse import urlparse
+from dataclasses import dataclass
 
 import requests
-
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
-ADMIN_ID = os.getenv("TELEGRAM_ADMIN_ID", "").strip()
-API_BASE_URL = os.getenv("API_BASE_URL", "http://api:8000").rstrip("/")
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:8080").rstrip("/")
-
-POLL_TIMEOUT = 30
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-def _admin_ok(user_id: int) -> bool:
-    try:
-        return int(ADMIN_ID) == int(user_id)
-    except Exception:
-        return False
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file='.env', extra='ignore')
+
+    telegram_bot_token: str = ''
+    api_base_url: str = 'http://api:8000'
+    bot_api_token: str = 'change_me'
+
+    poll_timeout: int = 25
 
 
-def _tg(method: str, data: Dict[str, Any], files: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    url = f"https://api.telegram.org/bot{BOT_TOKEN}/{method}"
-    r = requests.post(url, data=data, files=files, timeout=60)
+S = Settings()
+
+
+def tg_method(method: str, params: dict | None = None) -> dict:
+    url = f"https://api.telegram.org/bot{S.telegram_bot_token}/{method}"
+    r = requests.post(url, json=params or {}, timeout=60)
     try:
         return r.json()
     except Exception:
-        return {"ok": False, "description": r.text}
+        return {'ok': False, 'status_code': r.status_code, 'text': r.text}
 
 
-def send_message(chat_id: int, text: str) -> None:
-    _tg("sendMessage", {"chat_id": chat_id, "text": text})
+def send_message(chat_id: str, text: str):
+    tg_method('sendMessage', {'chat_id': chat_id, 'text': text})
 
 
-def api_get(path: str) -> Any:
-    r = requests.get(f"{API_BASE_URL}{path}", timeout=20)
-    r.raise_for_status()
+def api_get(path: str, params: dict) -> dict:
+    url = f"{S.api_base_url}{path}"
+    r = requests.get(url, params=params, headers={'X-Bot-Token': S.bot_api_token}, timeout=30)
+    if r.status_code >= 400:
+        return {'error': r.text, 'status_code': r.status_code}
     return r.json()
 
 
-def api_post_json(path: str, payload: Dict[str, Any]) -> Any:
-    r = requests.post(f"{API_BASE_URL}{path}", json=payload, timeout=20)
-    r.raise_for_status()
+def api_post(path: str, payload: dict) -> dict:
+    url = f"{S.api_base_url}{path}"
+    r = requests.post(url, json=payload, headers={'X-Bot-Token': S.bot_api_token}, timeout=30)
+    if r.status_code >= 400:
+        return {'error': r.text, 'status_code': r.status_code}
     return r.json()
 
 
-def _rtmp_url() -> str:
-    # derive host from PUBLIC_BASE_URL
-    try:
-        p = urlparse(PUBLIC_BASE_URL)
-        host = p.hostname or "localhost"
-    except Exception:
-        host = "localhost"
-    return f"rtmp://{host}/live"
+HELP = (
+    "Команды:\n"
+    "/link CODE — привязать Telegram к аккаунту (CODE смотри на сайте /settings)\n"
+    "/pcs — список твоих ПК\n"
+    "/obs PC_ID — настройки OBS (RTMP + key)\n"
+    "/live PC_ID — ссылка на live просмотр\n"
+)
 
 
-def _help_text() -> str:
-    return (
-        "Команды:\n"
-        "/pcs — список ПК\n"
-        "/pc <id> — настройки OBS для ПК + ссылка\n"
-        "/streams — кто сейчас LIVE\n"
-        "\nАдмин (только TELEGRAM_ADMIN_ID):\n"
-        "/savevideos on|off\n"
-        "/autodelete on|off\n"
-        "/strictkeys on|off\n"
-    )
-
-
-def handle_command(chat_id: int, user_id: int, text: str) -> None:
-    parts = text.strip().split()
-    cmd = parts[0].split("@")[0].lower()
-    args = parts[1:]
-
-    if cmd in {"/start", "/help"}:
-        send_message(chat_id, _help_text())
+def handle_message(msg: dict):
+    chat = msg.get('chat', {})
+    chat_id = str(chat.get('id'))
+    text = (msg.get('text') or '').strip()
+    if not text:
         return
 
-    if cmd == "/pcs":
-        pcs = api_get("/api/pcs")
+    parts = text.split()
+    cmd = parts[0].lower()
+
+    if cmd in ('/start', '/help'):
+        send_message(chat_id, HELP)
+        return
+
+    if cmd == '/link':
+        if len(parts) < 2:
+            send_message(chat_id, 'Использование: /link CODE (CODE смотри на сайте /settings)')
+            return
+        code = parts[1].strip()
+        res = api_post('/bot/link', {'code': code, 'telegram_id': chat_id})
+        if res.get('ok'):
+            send_message(chat_id, f"Готово! Аккаунт {res.get('email')} привязан.")
+        else:
+            send_message(chat_id, 'Не получилось привязать. Проверь CODE или создай новый в настройках.')
+        return
+
+    if cmd == '/pcs':
+        res = api_get('/bot/pcs', {'telegram_id': chat_id})
+        if 'pcs' not in res:
+            send_message(chat_id, 'Telegram не привязан. Открой сайт → /settings → /link CODE.')
+            return
+        pcs = res['pcs']
         if not pcs:
-            send_message(chat_id, "Пока нет ни одного ПК. Добавь в панели: " + PUBLIC_BASE_URL)
+            send_message(chat_id, 'У тебя нет ПК. Добавь на сайте.')
             return
-        lines = ["ПК:"]
-        for pc in pcs:
-            status = "LIVE" if pc.get("is_live") else "OFF"
-            lines.append(f"#{pc['id']} {pc['name']} — {status}")
-        lines.append("\nПанель: " + PUBLIC_BASE_URL)
-        send_message(chat_id, "\n".join(lines))
+        lines = ['Твои ПК:']
+        for p in pcs:
+            lines.append(f"{p['id']}: {p['name']}")
+        send_message(chat_id, '\n'.join(lines))
         return
 
-    if cmd == "/streams":
-        pcs = api_get("/api/pcs")
-        live = [pc for pc in pcs if pc.get("is_live")]
-        if not live:
-            send_message(chat_id, "Сейчас никто не стримит (LIVE пуст).")
+    if cmd == '/obs':
+        if len(parts) < 2 or not parts[1].isdigit():
+            send_message(chat_id, 'Использование: /obs PC_ID')
             return
-        lines = ["LIVE сейчас:"]
-        for pc in live:
-            watch = f"{PUBLIC_BASE_URL}/pc/{pc['id']}"
-            lines.append(f"#{pc['id']} {pc['name']} — {watch}")
-        send_message(chat_id, "\n".join(lines))
+        pc_id = int(parts[1])
+        res = api_get('/bot/obs', {'telegram_id': chat_id, 'pc_id': pc_id})
+        if 'server' not in res:
+            send_message(chat_id, 'Не найдено. Проверь PC_ID или привязку Telegram.')
+            return
+        send_message(chat_id, f"OBS настройки для {res['pc_name']} (ID {res['pc_id']}):\nServer: {res['server']}\nKey: {res['key']}")
         return
 
-    if cmd == "/pc":
-        if not args:
-            send_message(chat_id, "Нужно так: /pc 12")
+    if cmd == '/live':
+        if len(parts) < 2 or not parts[1].isdigit():
+            send_message(chat_id, 'Использование: /live PC_ID')
             return
-        try:
-            pc_id = int(args[0])
-        except Exception:
-            send_message(chat_id, "ID должен быть числом.")
+        pc_id = int(parts[1])
+        res = api_get('/bot/live', {'telegram_id': chat_id, 'pc_id': pc_id})
+        if 'url' not in res:
+            send_message(chat_id, 'Не найдено. Проверь PC_ID или привязку Telegram.')
             return
-        pc = api_get(f"/api/pc/{pc_id}")
-        rtmp = _rtmp_url()
-        stream_key = pc.get("stream_key")
-        page = f"{PUBLIC_BASE_URL}/pc/{pc_id}"
-        hls = f"{PUBLIC_BASE_URL}/hls/{stream_key}/index.m3u8"
-        msg = (
-            f"ПК #{pc_id}: {pc.get('name')}\n"
-            f"Server: {rtmp}\n"
-            f"Stream Key: {stream_key}\n"
-            f"Панель: {page}\n"
-            f"HLS: {hls}"
-        )
-        send_message(chat_id, msg)
+        send_message(chat_id, f"Live {res['pc_name']} (ID {res['pc_id']}):\n{res['url']}\nHLS: {res['hls']}")
         return
 
-    # --- admin toggles ---
-    if cmd in {"/savevideos", "/autodelete", "/strictkeys"}:
-        if not _admin_ok(user_id):
-            send_message(chat_id, "Недостаточно прав (нужен TELEGRAM_ADMIN_ID).")
-            return
-        if not args or args[0].lower() not in {"on", "off"}:
-            send_message(chat_id, "Нужно: on или off. Пример: /savevideos on")
-            return
-        value = "true" if args[0].lower() == "on" else "false"
-        key = cmd.lstrip("/")
-        if key == "savevideos":
-            key = "save_videos"
-        if key == "strictkeys":
-            key = "strict_keys"
-        api_post_json("/api/settings", {"key": key, "value": value})
-        send_message(chat_id, f"Ок: {key} = {value}")
-        return
-
-    send_message(chat_id, "Не понял команду. /help")
+    send_message(chat_id, 'Не понял команду. /help')
 
 
-def main() -> None:
-    if not BOT_TOKEN:
-        print("[FATAL] TELEGRAM_BOT_TOKEN is empty")
-        while True:
-            time.sleep(3600)
+def main():
+    if not S.telegram_bot_token:
+        raise SystemExit('TELEGRAM_BOT_TOKEN is not set')
 
     offset = 0
-    print("Bot started")
     while True:
         try:
-            resp = requests.get(
-                f"https://api.telegram.org/bot{BOT_TOKEN}/getUpdates",
-                params={"timeout": POLL_TIMEOUT, "offset": offset, "allowed_updates": ["message"]},
-                timeout=POLL_TIMEOUT + 10,
-            )
-            js = resp.json()
-            if not js.get("ok"):
-                print("getUpdates not ok", js)
+            res = requests.get(
+                f"https://api.telegram.org/bot{S.telegram_bot_token}/getUpdates",
+                params={'timeout': S.poll_timeout, 'offset': offset},
+                timeout=S.poll_timeout + 10,
+            ).json()
+
+            if not res.get('ok'):
                 time.sleep(2)
                 continue
-            for upd in js.get("result", []):
-                offset = max(offset, int(upd.get("update_id", 0)) + 1)
-                msg = upd.get("message") or {}
-                text = msg.get("text") or ""
-                chat = msg.get("chat") or {}
-                user = msg.get("from") or {}
-                if not text.startswith("/"):
-                    continue
-                chat_id = int(chat.get("id"))
-                user_id = int(user.get("id"))
-                try:
-                    handle_command(chat_id, user_id, text)
-                except Exception as e:
-                    send_message(chat_id, f"Ошибка обработки: {e}")
-        except Exception as e:
-            print("poll error", e)
+
+            for upd in res.get('result', []):
+                offset = max(offset, int(upd.get('update_id', 0)) + 1)
+                msg = upd.get('message') or upd.get('edited_message')
+                if msg:
+                    handle_message(msg)
+        except Exception:
             time.sleep(2)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
