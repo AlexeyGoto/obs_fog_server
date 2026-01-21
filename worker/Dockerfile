@@ -5,6 +5,6 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends ffmpeg ca-ce
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 # Copy obs package (models/settings) into worker image
-COPY obs/app /app/obs/app
+COPY app /app/obs/app
 COPY main.py /app/main.py
 CMD ["python","/app/main.py"]
