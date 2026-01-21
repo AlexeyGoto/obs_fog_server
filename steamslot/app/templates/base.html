@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title or "Steam Slot Service" }}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 0; background: #0b1020; color: #e6e8f2; }
+    a { color: #9bc2ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    header { padding: 16px 20px; background: #0f1730; border-bottom: 1px solid rgba(255,255,255,0.08); display:flex; align-items:center; gap:16px; }
+    header .brand { font-weight: 700; letter-spacing: .3px; }
+    nav a { margin-right: 12px; opacity: .95; }
+    main { padding: 20px; max-width: 1100px; margin: 0 auto; }
+    .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.10); border-radius: 14px; padding: 16px; margin-bottom: 16px; }
+    table { width:100%; border-collapse: collapse; }
+    th, td { text-align:left; padding: 10px 8px; border-bottom: 1px solid rgba(255,255,255,0.08); vertical-align: top; }
+    th { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; opacity: .75; }
+    .row { display:flex; gap: 14px; flex-wrap: wrap; }
+    .row > .card { flex: 1 1 320px; }
+    input, select, textarea { width: 100%; box-sizing: border-box; padding: 10px 10px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.18); background: rgba(0,0,0,0.22); color: #e6e8f2; }
+    label { display:block; font-size: 12px; opacity:.85; margin-bottom: 6px; }
+    button { padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.16); background: rgba(155,194,255,0.16); color: #e6e8f2; cursor: pointer; }
+    button:hover { background: rgba(155,194,255,0.22); }
+    .muted { opacity:.75; }
+    .pill { display:inline-block; padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(255,255,255,0.16); font-size: 12px; opacity:.9;}
+    .pill.ok { border-color: rgba(124,255,178,0.35); color:#7CFFB2; }
+    .pill.bad { border-color: rgba(255,124,124,0.35); color:#FF7C7C; }
+    .right { text-align:right; }
+    footer { padding: 22px; text-align:center; opacity:.7; font-size: 12px; }
+    .hint { font-size: 12px; opacity:.75; }
+    code { background: rgba(255,255,255,0.06); padding: 2px 6px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="brand">Steam Slot Service</div>
+  <nav>
+    <a href="/admin">Дашборд</a>
+    <a href="/admin/accounts">Аккаунты</a>
+    <a href="/admin/pcs">ПК</a>
+    <a href="/admin/leases">Слоты</a>
+  </nav>
+  <div style="margin-left:auto" class="muted">Basic Auth</div>
+</header>
+<main>
+  {% block content %}{% endblock %}
+</main>
+<footer>FastAPI • PostgreSQL/SQLite</footer>
+</body>
+</html>

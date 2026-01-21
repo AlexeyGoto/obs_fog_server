@@ -1,157 +1,100 @@
 from __future__ import annotations
+import os, time
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import sessionmaker
+from obs.app.settings import Settings
+from obs.app.models import User, PC
+from telegram import Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 
-import os
-import time
-from dataclasses import dataclass
+settings = Settings.load()
+engine = create_engine(settings.database_url, pool_pre_ping=True, future=True)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, future=True)
 
-import requests
-from pydantic_settings import BaseSettings, SettingsConfigDict
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Привет! Это OBS Fog Bot.\nКоманды:\n/link <email>\n/pcs\n/obs <pc_id>\n/live <pc_id>")
 
-
-class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file='.env', extra='ignore')
-
-    telegram_bot_token: str = ''
-    api_base_url: str = 'http://api:8000'
-    bot_api_token: str = 'change_me'
-
-    poll_timeout: int = 25
-
-
-S = Settings()
-
-
-def tg_method(method: str, params: dict | None = None) -> dict:
-    url = f"https://api.telegram.org/bot{S.telegram_bot_token}/{method}"
-    r = requests.post(url, json=params or {}, timeout=60)
-    try:
-        return r.json()
-    except Exception:
-        return {'ok': False, 'status_code': r.status_code, 'text': r.text}
-
-
-def send_message(chat_id: str, text: str):
-    tg_method('sendMessage', {'chat_id': chat_id, 'text': text})
-
-
-def api_get(path: str, params: dict) -> dict:
-    url = f"{S.api_base_url}{path}"
-    r = requests.get(url, params=params, headers={'X-Bot-Token': S.bot_api_token}, timeout=30)
-    if r.status_code >= 400:
-        return {'error': r.text, 'status_code': r.status_code}
-    return r.json()
-
-
-def api_post(path: str, payload: dict) -> dict:
-    url = f"{S.api_base_url}{path}"
-    r = requests.post(url, json=payload, headers={'X-Bot-Token': S.bot_api_token}, timeout=30)
-    if r.status_code >= 400:
-        return {'error': r.text, 'status_code': r.status_code}
-    return r.json()
-
-
-HELP = (
-    "Команды:\n"
-    "/link CODE — привязать Telegram к аккаунту (CODE смотри на сайте /settings)\n"
-    "/pcs — список твоих ПК\n"
-    "/obs PC_ID — настройки OBS (RTMP + key)\n"
-    "/live PC_ID — ссылка на live просмотр\n"
-)
-
-
-def handle_message(msg: dict):
-    chat = msg.get('chat', {})
-    chat_id = str(chat.get('id'))
-    text = (msg.get('text') or '').strip()
-    if not text:
+async def link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not context.args:
+        await update.message.reply_text("Использование: /link <email>")
         return
+    email = context.args[0].strip().lower()
+    chat_id = update.effective_chat.id
+    with SessionLocal() as db:
+        u = db.scalar(select(User).where(User.email==email))
+        if not u:
+            await update.message.reply_text("Не найден пользователь с таким email. Зарегистрируйся на сайте.")
+            return
+        u.tg_chat_id = int(chat_id)
+        db.commit()
+    await update.message.reply_text("✅ Telegram привязан. Теперь клипы будут приходить сюда.")
 
-    parts = text.split()
-    cmd = parts[0].lower()
-
-    if cmd in ('/start', '/help'):
-        send_message(chat_id, HELP)
+async def pcs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    with SessionLocal() as db:
+        u = db.scalar(select(User).where(User.tg_chat_id==int(chat_id)))
+        if not u:
+            await update.message.reply_text("Сначала привяжи аккаунт: /link <email>")
+            return
+        pcs = db.scalars(select(PC).where(PC.user_id==u.id).order_by(PC.id.asc())).all()
+    if not pcs:
+        await update.message.reply_text("ПК пока нет.")
         return
+    lines = ["Ваши ПК:"]
+    for pc in pcs:
+        lines.append(f"- {pc.id}: {pc.name}")
+    await update.message.reply_text("\n".join(lines))
 
-    if cmd == '/link':
-        if len(parts) < 2:
-            send_message(chat_id, 'Использование: /link CODE (CODE смотри на сайте /settings)')
-            return
-        code = parts[1].strip()
-        res = api_post('/bot/link', {'code': code, 'telegram_id': chat_id})
-        if res.get('ok'):
-            send_message(chat_id, f"Готово! Аккаунт {res.get('email')} привязан.")
-        else:
-            send_message(chat_id, 'Не получилось привязать. Проверь CODE или создай новый в настройках.')
+async def obs(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if not context.args:
+        await update.message.reply_text("Использование: /obs <pc_id>")
         return
+    pc_id = int(context.args[0])
+    with SessionLocal() as db:
+        u = db.scalar(select(User).where(User.tg_chat_id==int(chat_id)))
+        if not u:
+            await update.message.reply_text("Сначала привяжи аккаунт: /link <email>")
+            return
+        pc = db.get(PC, pc_id)
+        if not pc or pc.user_id != u.id:
+            await update.message.reply_text("ПК не найден.")
+            return
+    await update.message.reply_text(
+        f"OBS настройки для {pc.name}:\nServer: rtmp://{settings.app_base_url.split('://')[1].split('/')[0].split(':')[0]}:1935/live\nKey: {pc.stream_key}"
+    )
 
-    if cmd == '/pcs':
-        res = api_get('/bot/pcs', {'telegram_id': chat_id})
-        if 'pcs' not in res:
-            send_message(chat_id, 'Telegram не привязан. Открой сайт → /settings → /link CODE.')
-            return
-        pcs = res['pcs']
-        if not pcs:
-            send_message(chat_id, 'У тебя нет ПК. Добавь на сайте.')
-            return
-        lines = ['Твои ПК:']
-        for p in pcs:
-            lines.append(f"{p['id']}: {p['name']}")
-        send_message(chat_id, '\n'.join(lines))
+async def live(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    if not context.args:
+        await update.message.reply_text("Использование: /live <pc_id>")
         return
-
-    if cmd == '/obs':
-        if len(parts) < 2 or not parts[1].isdigit():
-            send_message(chat_id, 'Использование: /obs PC_ID')
+    pc_id = int(context.args[0])
+    with SessionLocal() as db:
+        u = db.scalar(select(User).where(User.tg_chat_id==int(chat_id)))
+        if not u:
+            await update.message.reply_text("Сначала привяжи аккаунт: /link <email>")
             return
-        pc_id = int(parts[1])
-        res = api_get('/bot/obs', {'telegram_id': chat_id, 'pc_id': pc_id})
-        if 'server' not in res:
-            send_message(chat_id, 'Не найдено. Проверь PC_ID или привязку Telegram.')
+        pc = db.get(PC, pc_id)
+        if not pc or pc.user_id != u.id:
+            await update.message.reply_text("ПК не найден.")
             return
-        send_message(chat_id, f"OBS настройки для {res['pc_name']} (ID {res['pc_id']}):\nServer: {res['server']}\nKey: {res['key']}")
-        return
-
-    if cmd == '/live':
-        if len(parts) < 2 or not parts[1].isdigit():
-            send_message(chat_id, 'Использование: /live PC_ID')
-            return
-        pc_id = int(parts[1])
-        res = api_get('/bot/live', {'telegram_id': chat_id, 'pc_id': pc_id})
-        if 'url' not in res:
-            send_message(chat_id, 'Не найдено. Проверь PC_ID или привязку Telegram.')
-            return
-        send_message(chat_id, f"Live {res['pc_name']} (ID {res['pc_id']}):\n{res['url']}\nHLS: {res['hls']}")
-        return
-
-    send_message(chat_id, 'Не понял команду. /help')
-
+    url = f"{settings.app_base_url}/pcs/{pc.id}"
+    await update.message.reply_text(f"Открыть live: {url}")
 
 def main():
-    if not S.telegram_bot_token:
-        raise SystemExit('TELEGRAM_BOT_TOKEN is not set')
+    token = settings.telegram_bot_token
+    if not token:
+        print("TELEGRAM_BOT_TOKEN is empty; bot disabled.")
+        while True:
+            time.sleep(60)
+    app = Application.builder().token(token).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("link", link))
+    app.add_handler(CommandHandler("pcs", pcs))
+    app.add_handler(CommandHandler("obs", obs))
+    app.add_handler(CommandHandler("live", live))
+    app.run_polling(close_loop=False)
 
-    offset = 0
-    while True:
-        try:
-            res = requests.get(
-                f"https://api.telegram.org/bot{S.telegram_bot_token}/getUpdates",
-                params={'timeout': S.poll_timeout, 'offset': offset},
-                timeout=S.poll_timeout + 10,
-            ).json()
-
-            if not res.get('ok'):
-                time.sleep(2)
-                continue
-
-            for upd in res.get('result', []):
-                offset = max(offset, int(upd.get('update_id', 0)) + 1)
-                msg = upd.get('message') or upd.get('edited_message')
-                if msg:
-                    handle_message(msg)
-        except Exception:
-            time.sleep(2)
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

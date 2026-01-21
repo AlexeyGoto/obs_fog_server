@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <h2 style="margin:0 0 12px 0">Аккаунты</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th><th>Имя</th><th>Вкл</th><th>Max slots</th><th>Файл</th><th class="right">Действия</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for a in accounts %}
+      <tr>
+        <td class="muted">{{ a.id }}</td>
+        <td><b>{{ a.name }}</b></td>
+        <td>{% if a.enabled %}<span class="pill ok">yes</span>{% else %}<span class="pill bad">no</span>{% endif %}</td>
+        <td>{{ a.max_slots }}</td>
+        <td>
+          {% if a.file_sha256 %}
+            <span class="pill ok">loaded</span>
+            <div class="hint">sha256: {{ a.file_sha256[:12] }}…</div>
+          {% else %}
+            <span class="pill bad">none</span>
+          {% endif %}
+        </td>
+        <td class="right"><a href="/admin/accounts/{{ a.id }}">Открыть</a></td>
+      </tr>
+    {% endfor %}
+    {% if accounts|length == 0 %}
+      <tr><td colspan="6" class="muted">Добавьте первый аккаунт ниже.</td></tr>
+    {% endif %}
+    </tbody>
+  </table>
+</div>
+
+<div class="card">
+  <h3 style="margin:0 0 10px 0">Добавить аккаунт</h3>
+  <form method="post" action="/admin/accounts">
+    <div class="row">
+      <div style="flex: 2 1 360px">
+        <label>Имя аккаунта (уникально)</label>
+        <input name="name" required maxlength="128" />
+      </div>
+      <div style="flex: 1 1 180px">
+        <label>Max slots</label>
+        <input name="max_slots" type="number" min="1" max="20" value="5" required />
+      </div>
+    </div>
+    <div style="margin-top:10px">
+      <button type="submit">Создать</button>
+    </div>
+    <div class="hint" style="margin-top:10px">Файл <code>loginusers.vdf</code> загрузите в карточке аккаунта.</div>
+  </form>
+</div>
+{% endblock %}

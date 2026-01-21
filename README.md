@@ -1,99 +1,85 @@
-# OBS Fog Service v2 (RTMP → HLS → последние 7 минут → Telegram)
+# OBS + SteamSlot All-in-One v3
 
-Сервис для **80+ ПК**:
-- OBS на каждом ПК стримит по RTMP на VPS.
-- NGINX-RTMP генерирует HLS и держит «скользящее окно» последних ~7 минут.
-- После окончания стрима NGINX дергает hook `on_publish_done`, мы ставим задачу в очередь.
-- Worker склеивает HLS → MP4 (без перекодирования, `-c copy`).
-- Если файл <= лимита Telegram (по умолчанию 50 МБ) — отправляем владельцу.
-- Если больше — отправляем владельцу уведомление «слишком большой файл».
-- После попытки отправки (успех/ошибка/слишком большой) mp4 удаляется, если включено `auto_delete`.
+Один VPS, один nginx (RTMP + HTTP), два сервиса:
+- OBS Fog Service (RTMP ingest + HLS + web UI + Telegram bot + worker)
+- SteamSlot service (из `steam_update_srv`, работает под `/steamslot/`)
 
-## Архитектура
-- `nginx` — RTMP ingest (1935) + HTTP (8080) + HLS раздача
-- `api` — FastAPI: сайт, авторизация, управление ПК, hooks, bot API
-- `worker` — обработка очереди: ffmpeg + Telegram sendVideo
-- `bot` — Telegram бот (long polling) для команд `/pcs`, `/obs`, `/live`, `/link CODE`
+## Порты
+- 1935/tcp — RTMP ingest (OBS)
+- 8080/tcp — Web UI + HLS + SteamSlot UI
 
-## Быстрый старт (VPS)
+## Быстрый старт на Ubuntu 22/24
 
-### 1) Установка Docker (Ubuntu 22.04/24.04)
+### 1) Установить Docker
 ```bash
-apt-get update -y
-apt-get install -y ca-certificates curl gnupg
+apt update -y
+apt install -y ca-certificates curl gnupg lsb-release tmux
+
 install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 chmod a+r /etc/apt/keyrings/docker.gpg
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  $(. /etc/os-release && echo $VERSION_CODENAME) stable" \
-  > /etc/apt/sources.list.d/docker.list
-apt-get update -y
-apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-systemctl enable --now docker
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
+apt update -y
+apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 ```
 
-### 2) Разворачивание проекта
+### 2) Открыть порты
 ```bash
-mkdir -p /opt/obs_fog_service
-cd /opt/obs_fog_service
-# сюда положи содержимое репозитория (git clone или scp)
+ufw allow 1935/tcp
+ufw allow 8080/tcp
+ufw reload
+```
+
+### 3) Развернуть проект
+```bash
+cd /opt
+git clone <YOUR_GIT_REPO_URL> obs_allinone_v3
+cd obs_allinone_v3
 cp .env.example .env
 nano .env
 ```
 
-Минимально в `.env` нужно:
-- `APP_BASE_URL=http://<ваш-ip>:8080`
-- `JWT_SECRET=...`
-- `BOT_API_TOKEN=...`
-- `TELEGRAM_BOT_TOKEN=...`
-- `DATABASE_URL=sqlite:////data/db/app.db`
-
-### 3) Старт
+### 4) Запуск устойчиво (чтобы SSH не слетал)
 ```bash
-docker compose up -d --build
+tmux new -s obs
 ```
 
-Открыть сайт:
-- `http://<ваш-ip>:8080`
-
-### 4) Открыть порты
-- RTMP: `1935/tcp`
-- Web/HLS: `8080/tcp`
-
-## Настройка OBS (на ПК)
-В OBS выбери **Custom RTMP**:
-- **Server:** `rtmp://<ваш-ip>:1935/live`
-- **Stream Key:** из карточки ПК на сайте.
-
-## Telegram
-1) На сайте → **Настройки** → возьми `CODE`.
-2) В Telegram боте: `/link CODE`
-3) Команды:
-- `/pcs` — список ПК
-- `/obs PC_ID` — RTMP+key
-- `/live PC_ID` — ссылка на live
-
-## Почему не подключается OBS / FFmpeg пишет Input/output error
-### Проверки
-На VPS:
+### 5) Первый запуск — БЕЗ -d (чтобы видеть ошибки)
 ```bash
-ss -lntp | grep 1935
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8080/
+docker compose down --remove-orphans
+mkdir -p data/hls data/db data/videos
+docker compose up --build
 ```
-Тест RTMP локально:
+
+Если всё ок — Ctrl+C, затем в фон:
 ```bash
-ffmpeg -re -f lavfi -i testsrc=size=1280x720:rate=30 -f lavfi -i sine=frequency=1000 \
-  -c:v libx264 -preset veryfast -tune zerolatency -c:a aac -f flv \
-  rtmp://127.0.0.1:1935/live/<STREAM_KEY>
+docker compose up -d
+docker compose ps
+docker compose logs -f --tail=200
 ```
-Если тест идет, а OBS снаружи нет — проверь провайдера/фаервол, что порт 1935 доступен.
 
-## Ограничение Telegram 50 МБ
-Если клип больше лимита, сервис отправляет **только уведомление владельцу** и **не держит файл** (при `auto_delete=true`).
+## Диагностика если билд «долго»
+В отдельном окне:
+```bash
+ps aux | grep -E "docker compose|buildkit|apk add|make|gcc|curl|tar" | grep -v grep | head -n 30
+```
 
-## Масштаб (80+ ПК)
-- Ingest 80×500 кбит/с = ~40 Мбит/с входящего трафика (плюс накладные)
-- CPU в основном тратится на disk IO и `ffmpeg -c copy` (без перекодирования)
-- По RAM обычно достаточно 1–2 ГБ под сервис, но лучше 2–4 ГБ из-за кешей и пиков IO.
+Nginx собирается из исходников, но мы используем ускоренное зеркало Alpine (`mirror.yandex.ru`) и разбитые RUN-слои, чтобы не было «тишины» по 30+ минут.
 
+## URLs
+- OBS Web: `http://<VPS_IP>:8080/`
+- HLS: `http://<VPS_IP>:8080/hls/live/<stream_key>/index.m3u8`
+- SteamSlot: `http://<VPS_IP>:8080/steamslot/`
+
+## OBS настройки
+- Server: `rtmp://<VPS_IP>:1935/live`
+- Key: `stream_key` из карточки ПК
+
+## Telegram bot
+1) Зарегистрируйся на сайте OBS.
+2) В боте: `/link <email>`
+3) Команды: `/pcs`, `/obs <pc_id>`, `/live <pc_id>`
+
+## SteamSlot
+SteamSlot обслуживает аренду слотов и страницы управления. Лежит под `/steamslot/`.
+Для БД укажи отдельные `STEAMSLOT_...` переменные (или `STEAMSLOT_DATABASE_URL`).

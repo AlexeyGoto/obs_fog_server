@@ -4,17 +4,21 @@ services:
       context: ./nginx
     restart: unless-stopped
     ports:
-      - "1935:1935"   # RTMP ingest (OBS)
-      - "8080:8080"   # HTTP gateway (web + HLS)
+      - "1935:1935"
+      - "8080:8080"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./data/hls:/data/hls
+    ulimits:
+      nofile:
+        soft: 200000
+        hard: 200000
     depends_on:
       - api
+      - steamslot
 
   api:
     build:
-      context: ./api
+      context: ./obs
     restart: unless-stopped
     env_file:
       - .env
@@ -23,16 +27,14 @@ services:
     volumes:
       - ./data/db:/data/db
       - ./data/videos:/data/videos
-    # ВАЖНО: api НЕ зависит от nginx (убрали цикл)
 
   worker:
     build:
-      context: ./worker
+      context: .
+      dockerfile: worker/Dockerfile
     restart: unless-stopped
     env_file:
       - .env
-    environment:
-      HLS_BASE_URL: ${HLS_BASE_URL:-http://nginx:8080/hls}
     volumes:
       - ./data/db:/data/db
       - ./data/videos:/data/videos
@@ -42,9 +44,21 @@ services:
 
   bot:
     build:
-      context: ./bot
+      context: .
+      dockerfile: bot/Dockerfile
     restart: unless-stopped
     env_file:
       - .env
     depends_on:
       - api
+
+  steamslot:
+    build:
+      context: ./steamslot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      STEAMSLOT_ROOT_PATH: /steamslot
+    expose:
+      - "8001"
