@@ -2,7 +2,6 @@ services:
   nginx:
     build:
       context: ./nginx
-      dockerfile: Dockerfile
     restart: unless-stopped
     ports:
       - "1935:1935"
@@ -20,7 +19,6 @@ services:
   api:
     build:
       context: ./obs
-      dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
       - .env
@@ -32,8 +30,8 @@ services:
 
   worker:
     build:
-      context: ./worker
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: worker/Dockerfile
     restart: unless-stopped
     env_file:
       - .env
@@ -46,8 +44,8 @@ services:
 
   bot:
     build:
-      context: ./bot
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: bot/Dockerfile
     restart: unless-stopped
     env_file:
       - .env
@@ -57,7 +55,6 @@ services:
   steamslot:
     build:
       context: ./steamslot
-      dockerfile: Dockerfile
     restart: unless-stopped
     env_file:
       - .env

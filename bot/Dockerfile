@@ -5,5 +5,5 @@ RUN apt-get update -y && apt-get install -y --no-install-recommends ca-certifica
 COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 COPY obs/app /app/obs/app
-COPY main.py /app/main.py
+COPY bot/main.py /app/main.py
 CMD ["python","/app/main.py"]
