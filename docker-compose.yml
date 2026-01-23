@@ -4,61 +4,60 @@ services:
       context: ./nginx
     restart: unless-stopped
     ports:
-      - "1935:1935"
-      - "8080:8080"
+    - 1935:1935
+    - 8080:8080
     volumes:
-      - ./data/hls:/data/hls
+    - ./data/hls:/data/hls
     ulimits:
       nofile:
         soft: 200000
         hard: 200000
     depends_on:
-      - api
-      - steamslot
-
+    - api
+    - steamslot
   api:
     build:
       context: ./obs
     restart: unless-stopped
     env_file:
-      - .env
+    - .env
     environment:
       HLS_BASE_URL: ${HLS_BASE_URL:-http://nginx:8080/hls}
     volumes:
-      - ./data/db:/data/db
-      - ./data/videos:/data/videos
-
+    - ./data/db:/data/db
+    - ./data/videos:/data/videos
   worker:
     build:
       context: .
       dockerfile: worker/Dockerfile
     restart: unless-stopped
     env_file:
-      - .env
+    - .env
     volumes:
-      - ./data/db:/data/db
-      - ./data/videos:/data/videos
+    - ./data/db:/data/db
+    - ./data/videos:/data/videos
     depends_on:
-      - api
-      - nginx
-
+    - api
+    - nginx
   bot:
     build:
       context: .
       dockerfile: bot/Dockerfile
     restart: unless-stopped
     env_file:
-      - .env
+    - .env
     depends_on:
-      - api
-
+    - api
   steamslot:
     build:
       context: ./steamslot
     restart: unless-stopped
     env_file:
-      - .env
+    - .env
     environment:
       STEAMSLOT_ROOT_PATH: /steamslot
+      STEAMSLOT_DATABASE_URL: ${STEAMSLOT_DATABASE_URL:-sqlite:////data/db/steamslot.db}
     expose:
-      - "8001"
+    - '8001'
+    volumes:
+    - ./data/db:/data/db

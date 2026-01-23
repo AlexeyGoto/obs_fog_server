@@ -16,7 +16,7 @@
         <td>{% if p.enabled %}<span class="pill ok">yes</span>{% else %}<span class="pill bad">no</span>{% endif %}</td>
         <td class="muted">{{ p.account_name or "-" }}</td>
         <td><code>{{ p.api_key[:10] }}…</code></td>
-        <td class="right"><a href="/admin/pcs/{{ p.id }}">Открыть</a></td>
+        <td class="right"><a href="{{ root_path }}/admin/pcs/{{ p.id }}">Открыть</a></td>
       </tr>
     {% endfor %}
     {% if pcs|length == 0 %}
@@ -28,7 +28,7 @@
 
 <div class="card">
   <h3 style="margin:0 0 10px 0">Добавить ПК</h3>
-  <form method="post" action="/admin/pcs">
+  <form method="post" action="{{ root_path }}/admin/pcs">
     <div class="row">
       <div style="flex: 2 1 360px">
         <label>Имя ПК (уникально)</label>

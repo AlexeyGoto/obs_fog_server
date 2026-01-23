@@ -15,7 +15,7 @@
         <a href="/steamslot/" class="text-slate-600 hover:text-slate-900">SteamSlot</a>
       </div>
       <div class="flex items-center gap-2">
-        {% if request.cookies.get("obs_session") %}
+        {% if request.cookies.get("obsfog_token") %}
         <form method="post" action="/logout">
           <button class="px-3 py-1.5 rounded bg-slate-900 text-white">Выйти</button>
         </form>

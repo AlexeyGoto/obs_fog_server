@@ -5,6 +5,7 @@ import hashlib
 import secrets
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import FastAPI, Depends, HTTPException, Request, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
@@ -16,11 +17,11 @@ from .settings import Settings
 from .db import make_engine, make_session_factory, Base
 from .models import Account, PC, Lease
 from .schemas import AcquireRequest, AcquireResponse, HeartbeatRequest, ReleaseRequest, SimpleOk
-from .security import admin_auth, FernetBox
-
-app = FastAPI(title="Steam Slot Service", version="1.0.0", root_path=Settings.load().root_path)
+from .security import FernetBox, AdminSession, require_admin
 
 settings = Settings.load()
+app = FastAPI(title="Steam Slot Service", version="1.0.0", root_path=settings.root_path)
+
 engine = make_engine(settings)
 SessionLocal = make_session_factory(engine)
 
@@ -39,6 +40,9 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 fernet_box = FernetBox.from_env_key(settings.file_enc_key)
 
+admin_session = AdminSession.from_env_key(settings.session_key, settings.session_ttl_seconds)
+require_admin_dep = require_admin(settings, admin_session)
+
 
 def db() -> Session:
     s = SessionLocal()
@@ -56,6 +60,88 @@ def _startup():
 @app.get("/healthz")
 def healthz():
     return {"ok": True}
+
+
+def _url(path: str) -> str:
+    """
+    Префиксует путь корневым префиксом приложения (root_path) для корректных redirect'ов за reverse proxy (/steamslot).
+    """
+    rp = (settings.root_path or "").rstrip("/")
+    if not path.startswith("/"):
+        path = "/" + path
+    return f"{rp}{path}" if rp else path
+
+
+@app.middleware("http")
+async def _admin_cookie_middleware(request: Request, call_next):
+    # Определяем админ-пользователя по cookie-сессии (или None)
+    request.state.admin_user = admin_session.verify(request.cookies.get(settings.cookie_name, ""))
+
+    # Редиректим на /login при заходе в админку без сессии
+    p = request.url.path
+    if p.startswith("/admin") and not request.state.admin_user:
+        # Разрешаем страницу логина
+        login_path = _url("/login")
+        ext_next = _url(p)
+        if request.url.query:
+            ext_next = ext_next + "?" + request.url.query
+        return RedirectResponse(url=f"{login_path}?next={quote(ext_next)}", status_code=303)
+
+    return await call_next(request)
+
+
+@app.get("/login", response_class=HTMLResponse, include_in_schema=False)
+def login_form(request: Request, next: str | None = None):
+    return templates.TemplateResponse(
+        "login.html",
+        {"request": request, "title": "Вход", "next": next or _url("/admin"), "root_path": request.scope.get("root_path", "")},
+    )
+
+
+@app.post("/login", include_in_schema=False)
+def login_submit(
+    request: Request,
+    username: str = Form(...),
+    password: str = Form(...),
+    next: str = Form(default=""),
+):
+    username = username.strip()
+    # Проверяем логин/пароль
+    ok_user = secrets.compare_digest(username, settings.admin_user)
+    ok_pass = secrets.compare_digest(password, settings.admin_pass)
+    if not (ok_user and ok_pass):
+        return templates.TemplateResponse(
+            "login.html",
+            {
+                "request": request,
+                "title": "Вход",
+                "error": "Неверный логин или пароль",
+                "next": next or _url("/admin"),
+                "root_path": request.scope.get("root_path", ""),
+            },
+            status_code=401,
+        )
+
+    token = admin_session.issue(username)
+    resp = RedirectResponse(url=(next or _url("/admin")), status_code=303)
+    resp.set_cookie(
+        settings.cookie_name,
+        token,
+        httponly=True,
+        samesite="lax",
+        secure=bool(settings.cookie_secure),
+        max_age=int(settings.session_ttl_seconds),
+        path="/",
+    )
+    return resp
+
+
+@app.get("/logout", include_in_schema=False)
+def logout(request: Request):
+    resp = RedirectResponse(url=_url("/login"), status_code=303)
+    resp.delete_cookie(settings.cookie_name, path="/")
+    return resp
+
 
 
 def utcnow() -> dt.datetime:
@@ -261,11 +347,11 @@ def api_download_loginusers(token: str, request: Request, session: Session = Dep
 
 @app.get("/", include_in_schema=False)
 def root():
-    return RedirectResponse("/admin")
+    return RedirectResponse(_url("/admin"), status_code=303)
 
 
 @app.get("/admin", response_class=HTMLResponse)
-def admin_dashboard(request: Request, _user=Depends(admin_auth(settings)), session: Session = Depends(db)):
+def admin_dashboard(request: Request, _user=Depends(require_admin_dep), session: Session = Depends(db)):
     now = utcnow()
     with session.begin():
         cleanup_expired_leases(session)
@@ -311,34 +397,36 @@ def admin_dashboard(request: Request, _user=Depends(admin_auth(settings)), sessi
                 "active_leases": active_leases,
             },
             "leases": leases_view,
+            "root_path": request.scope.get("root_path",""),
+            "admin_user": getattr(request.state,"admin_user", None),
         },
     )
 
 
 @app.get("/admin/accounts", response_class=HTMLResponse)
-def admin_accounts(request: Request, _user=Depends(admin_auth(settings)), session: Session = Depends(db)):
+def admin_accounts(request: Request, _user=Depends(require_admin_dep), session: Session = Depends(db)):
     accounts = session.execute(select(Account).order_by(Account.id.asc())).scalars().all()
-    return templates.TemplateResponse("accounts.html", {"request": request, "title": "Аккаунты", "accounts": accounts})
+    return templates.TemplateResponse("accounts.html", {"request": request, "title": "Аккаунты", "accounts": accounts, "root_path": request.scope.get("root_path",""), "admin_user": getattr(request.state,"admin_user", None) })
 
 
 @app.post("/admin/accounts")
 def admin_accounts_create(
     name: str = Form(...),
     max_slots: int = Form(...),
-    _user=Depends(admin_auth(settings)),
+    _user=Depends(require_admin_dep),
     session: Session = Depends(db),
 ):
     with session.begin():
         session.add(Account(name=name.strip(), max_slots=int(max_slots), enabled=True))
-    return RedirectResponse("/admin/accounts", status_code=303)
+    return RedirectResponse(_url("/admin/accounts"), status_code=303)
 
 
 @app.get("/admin/accounts/{account_id}", response_class=HTMLResponse)
-def admin_account_detail(account_id: int, request: Request, _user=Depends(admin_auth(settings)), session: Session = Depends(db)):
+def admin_account_detail(account_id: int, request: Request, _user=Depends(require_admin_dep), session: Session = Depends(db)):
     a = session.get(Account, account_id)
     if not a:
         raise HTTPException(status_code=404)
-    return templates.TemplateResponse("account_detail.html", {"request": request, "title": f"Аккаунт {a.name}", "a": a})
+    return templates.TemplateResponse("account_detail.html", {"request": request, "title": f"Аккаунт {a.name}", "a": a, "root_path": request.scope.get("root_path",""), "admin_user": getattr(request.state,"admin_user", None) })
 
 
 @app.post("/admin/accounts/{account_id}/update")
@@ -347,7 +435,7 @@ def admin_account_update(
     name: str = Form(...),
     max_slots: int = Form(...),
     enabled: str = Form(...),
-    _user=Depends(admin_auth(settings)),
+    _user=Depends(require_admin_dep),
     session: Session = Depends(db),
 ):
     with session.begin():
@@ -365,7 +453,7 @@ def admin_account_upload_file(
     account_id: int,
     encrypt: str = Form("1"),
     file: UploadFile = File(...),
-    _user=Depends(admin_auth(settings)),
+    _user=Depends(require_admin_dep),
     session: Session = Depends(db),
 ):
     raw = file.file.read()
@@ -391,7 +479,7 @@ def admin_account_upload_file(
 @app.post("/admin/accounts/{account_id}/delete_file")
 def admin_account_delete_file(
     account_id: int,
-    _user=Depends(admin_auth(settings)),
+    _user=Depends(require_admin_dep),
     session: Session = Depends(db),
 ):
     with session.begin():
@@ -410,7 +498,7 @@ def admin_account_delete_file(
 @app.get("/admin/accounts/{account_id}/download")
 def admin_account_download_file(
     account_id: int,
-    _user=Depends(admin_auth(settings)),
+    _user=Depends(require_admin_dep),
     session: Session = Depends(db),
 ):
     a = session.get(Account, account_id)
@@ -430,7 +518,7 @@ def admin_account_download_file(
 
 
 @app.get("/admin/pcs", response_class=HTMLResponse)
-def admin_pcs(request: Request, _user=Depends(admin_auth(settings)), session: Session = Depends(db)):
+def admin_pcs(request: Request, _user=Depends(require_admin_dep), session: Session = Depends(db)):
     pcs = session.execute(select(PC).order_by(PC.id.asc())).scalars().all()
     accounts = session.execute(select(Account).order_by(Account.id.asc())).scalars().all()
     acc_map = {a.id: a.name for a in accounts}
@@ -447,7 +535,7 @@ def admin_pcs(request: Request, _user=Depends(admin_auth(settings)), session: Se
             }
         )
 
-    return templates.TemplateResponse("pcs.html", {"request": request, "title": "ПК", "pcs": pcs_view, "accounts": accounts})
+    return templates.TemplateResponse("pcs.html", {"request": request, "title": "ПК", "pcs": pcs_view, "accounts": accounts, "root_path": request.scope.get("root_path",""), "admin_user": getattr(request.state,"admin_user", None) })
 
 
 @app.post("/admin/pcs")
@@ -456,7 +544,7 @@ def admin_pcs_create(
     account_id: str = Form(""),
     api_key: str = Form(""),
     enabled: str = Form("1"),
-    _user=Depends(admin_auth(settings)),
+    _user=Depends(require_admin_dep),
     session: Session = Depends(db),
 ):
     key = api_key.strip() or ("PC-" + secrets.token_urlsafe(18))
@@ -465,16 +553,16 @@ def admin_pcs_create(
     with session.begin():
         session.add(PC(name=name.strip(), enabled=(enabled == "1"), api_key=key, account_id=acc_id))
 
-    return RedirectResponse("/admin/pcs", status_code=303)
+    return RedirectResponse(_url("/admin/pcs"), status_code=303)
 
 
 @app.get("/admin/pcs/{pc_id}", response_class=HTMLResponse)
-def admin_pc_detail(pc_id: int, request: Request, _user=Depends(admin_auth(settings)), session: Session = Depends(db)):
+def admin_pc_detail(pc_id: int, request: Request, _user=Depends(require_admin_dep), session: Session = Depends(db)):
     p = session.get(PC, pc_id)
     if not p:
         raise HTTPException(status_code=404)
     accounts = session.execute(select(Account).order_by(Account.id.asc())).scalars().all()
-    return templates.TemplateResponse("pc_detail.html", {"request": request, "title": f"ПК {p.name}", "p": p, "accounts": accounts})
+    return templates.TemplateResponse("pc_detail.html", {"request": request, "title": f"ПК {p.name}", "p": p, "accounts": accounts, "root_path": request.scope.get("root_path",""), "admin_user": getattr(request.state,"admin_user", None) })
 
 
 @app.post("/admin/pcs/{pc_id}/update")
@@ -485,7 +573,7 @@ def admin_pc_update(
     api_key: str = Form(...),
     account_id: str = Form(""),
     notes: str = Form(""),
-    _user=Depends(admin_auth(settings)),
+    _user=Depends(require_admin_dep),
     session: Session = Depends(db),
 ):
     acc_id = int(account_id) if account_id.strip() else None
@@ -502,7 +590,7 @@ def admin_pc_update(
 
 
 @app.get("/admin/leases", response_class=HTMLResponse)
-def admin_leases(request: Request, _user=Depends(admin_auth(settings)), session: Session = Depends(db)):
+def admin_leases(request: Request, _user=Depends(require_admin_dep), session: Session = Depends(db)):
     with session.begin():
         cleanup_expired_leases(session)
         rows = session.execute(
@@ -527,11 +615,11 @@ def admin_leases(request: Request, _user=Depends(admin_auth(settings)), session:
             }
         )
 
-    return templates.TemplateResponse("leases.html", {"request": request, "title": "Слоты", "leases": leases})
+    return templates.TemplateResponse("leases.html", {"request": request, "title": "Слоты", "leases": leases, "root_path": request.scope.get("root_path",""), "admin_user": getattr(request.state,"admin_user", None) })
 
 
 @app.post("/admin/leases/{lease_id}/revoke")
-def admin_revoke_lease(lease_id: int, _user=Depends(admin_auth(settings)), session: Session = Depends(db)):
+def admin_revoke_lease(lease_id: int, _user=Depends(require_admin_dep), session: Session = Depends(db)):
     with session.begin():
         l = session.get(Lease, lease_id)
         if not l:
@@ -540,4 +628,4 @@ def admin_revoke_lease(lease_id: int, _user=Depends(admin_auth(settings)), sessi
             l.released_at = utcnow()
             l.status = "revoked"
             l.message = "revoked by admin"
-    return RedirectResponse("/admin/leases", status_code=303)
+    return RedirectResponse(_url("/admin/leases"), status_code=303)

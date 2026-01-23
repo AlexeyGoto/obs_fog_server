@@ -2,7 +2,7 @@
 {% block content %}
 <div class="card">
   <h2 style="margin:0 0 10px 0">ПК: {{ p.name }}</h2>
-  <form method="post" action="/admin/pcs/{{ p.id }}/update">
+  <form method="post" action="{{ root_path }}/admin/pcs/{{ p.id }}/update">
     <div class="row">
       <div style="flex: 2 1 360px">
         <label>Имя</label>
@@ -39,7 +39,7 @@
 
     <div style="margin-top:12px">
       <button type="submit">Сохранить</button>
-      <a href="/admin/pcs" style="margin-left:10px" class="muted">назад</a>
+      <a href="{{ root_path }}/admin/pcs" style="margin-left:10px" class="muted">назад</a>
     </div>
   </form>
 </div>

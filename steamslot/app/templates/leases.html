@@ -21,7 +21,7 @@
         <td class="muted">{{ l.status or "-" }}</td>
         <td class="right">
           {% if not l.released_at %}
-          <form method="post" action="/admin/leases/{{ l.id }}/revoke" style="display:inline">
+          <form method="post" action="{{ root_path }}/admin/leases/{{ l.id }}/revoke" style="display:inline">
             <button type="submit" style="background: rgba(255,124,124,0.18)">Отозвать</button>
           </form>
           {% else %}

@@ -23,7 +23,7 @@
             <span class="pill bad">none</span>
           {% endif %}
         </td>
-        <td class="right"><a href="/admin/accounts/{{ a.id }}">Открыть</a></td>
+        <td class="right"><a href="{{ root_path }}/admin/accounts/{{ a.id }}">Открыть</a></td>
       </tr>
     {% endfor %}
     {% if accounts|length == 0 %}
@@ -35,7 +35,7 @@
 
 <div class="card">
   <h3 style="margin:0 0 10px 0">Добавить аккаунт</h3>
-  <form method="post" action="/admin/accounts">
+  <form method="post" action="{{ root_path }}/admin/accounts">
     <div class="row">
       <div style="flex: 2 1 360px">
         <label>Имя аккаунта (уникально)</label>

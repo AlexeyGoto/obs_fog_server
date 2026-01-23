@@ -36,12 +36,12 @@
 <header>
   <div class="brand">Steam Slot Service</div>
   <nav>
-    <a href="/admin">Дашборд</a>
-    <a href="/admin/accounts">Аккаунты</a>
-    <a href="/admin/pcs">ПК</a>
-    <a href="/admin/leases">Слоты</a>
+    <a href="{{ root_path }}/admin">Дашборд</a>
+    <a href="{{ root_path }}/admin/accounts">Аккаунты</a>
+    <a href="{{ root_path }}/admin/pcs">ПК</a>
+    <a href="{{ root_path }}/admin/leases">Слоты</a>
   </nav>
-  <div style="margin-left:auto" class="muted">Basic Auth</div>
+  <div style="margin-left:auto" class="muted">{% if admin_user %}Вход: <b>{{ admin_user }}</b> • <a href="{{ root_path }}/logout">Выйти</a>{% else %}<a href="{{ root_path }}/login">Войти</a>{% endif %}</div>
 </header>
 <main>
   {% block content %}{% endblock %}
