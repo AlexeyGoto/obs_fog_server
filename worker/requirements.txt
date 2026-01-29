@@ -1,6 +1,0 @@
-requests==2.32.3
-SQLAlchemy==2.0.32
-psycopg2-binary==2.9.9
-PyJWT==2.9.0
-passlib[bcrypt]==1.7.4
-bcrypt==3.2.2

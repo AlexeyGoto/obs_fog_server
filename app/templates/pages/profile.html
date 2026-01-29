@@ -1,0 +1,325 @@
+{% extends "base.html" %}
+
+{% block title %}Profile - OBS Fog Server{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Account Settings</h1>
+        <p class="mt-1 text-gray-500 dark:text-gray-400">Manage your account preferences and security</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Sidebar -->
+        <div class="lg:col-span-1">
+            <!-- Profile Card -->
+            <div class="card p-6 text-center mb-6">
+                <div class="relative inline-block">
+                    <div class="w-24 h-24 rounded-2xl bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-white text-3xl font-bold shadow-lg shadow-primary-500/25">
+                        {{ user.email[0]|upper }}
+                    </div>
+                    {% if user.is_premium %}
+                    <div class="absolute -bottom-2 -right-2 w-8 h-8 bg-gradient-to-br from-amber-400 to-orange-500 rounded-full flex items-center justify-center shadow-lg">
+                        <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                        </svg>
+                    </div>
+                    {% endif %}
+                </div>
+                <h2 class="mt-4 text-lg font-semibold text-gray-900 dark:text-white">{{ user.email }}</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 capitalize">{{ user.role.value }}</p>
+
+                <div class="mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                    <div class="flex items-center justify-center space-x-2">
+                        {% if user.is_approved %}
+                        <span class="badge badge-success">
+                            <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                            </svg>
+                            Verified
+                        </span>
+                        {% else %}
+                        <span class="badge badge-warning">
+                            <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd"/>
+                            </svg>
+                            Pending
+                        </span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats -->
+            <div class="card p-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-500 dark:text-gray-400">Member since</span>
+                    <span class="text-sm font-medium text-gray-900 dark:text-white">{{ user.created_at.strftime('%b %Y') }}</span>
+                </div>
+                {% if user.tg_chat_id %}
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-500 dark:text-gray-400">Telegram</span>
+                    <span class="badge badge-info">Connected</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="lg:col-span-2 space-y-6">
+            <!-- Premium Status -->
+            <div class="card p-6 relative overflow-hidden">
+                <div class="absolute top-0 right-0 w-32 h-32 -mr-8 -mt-8 bg-gradient-to-br from-amber-400/20 to-orange-500/20 rounded-full blur-2xl"></div>
+
+                <div class="relative flex flex-col md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <div class="flex items-center space-x-2 mb-2">
+                            <svg class="w-5 h-5 text-amber-500" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                            </svg>
+                            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">Premium Status</h2>
+                        </div>
+                        {% if user.is_premium %}
+                        <p class="text-gray-500 dark:text-gray-400">
+                            Your premium subscription is active
+                            {% if user.premium_until %}
+                            until <span class="font-medium text-gray-900 dark:text-white">{{ user.premium_until.strftime('%B %d, %Y') }}</span>
+                            {% endif %}
+                        </p>
+                        {% else %}
+                        <p class="text-gray-500 dark:text-gray-400">Upgrade to premium for unlimited streams and priority support</p>
+                        {% endif %}
+                    </div>
+                    <div class="mt-4 md:mt-0">
+                        {% if user.is_premium %}
+                        <span class="badge badge-premium text-base px-4 py-2">Premium Active</span>
+                        {% else %}
+                        <a href="/premium" class="btn btn-accent">
+                            Upgrade Now
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Account Information -->
+            <div class="card p-6">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-6 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                    </svg>
+                    Account Information
+                </h2>
+
+                <div class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Email</p>
+                            <p class="text-gray-900 dark:text-white font-medium">{{ user.email }}</p>
+                        </div>
+                        <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                            <p class="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Role</p>
+                            <p class="text-gray-900 dark:text-white font-medium capitalize">{{ user.role.value }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Change Password -->
+            <div class="card p-6">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-6 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                    </svg>
+                    Change Password
+                </h2>
+
+                <form id="passwordForm" class="space-y-4" x-data="{ loading: false, message: '', error: false }">
+                    <div x-show="message" x-cloak
+                         x-transition:enter="transition ease-out duration-200"
+                         :class="error ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400' : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-600 dark:text-green-400'"
+                         class="p-4 rounded-xl text-sm flex items-center border">
+                        <svg x-show="!error" class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                        </svg>
+                        <svg x-show="error" class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/>
+                        </svg>
+                        <span x-text="message"></span>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Current Password</label>
+                        <input type="password" name="current_password" required class="input">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">New Password</label>
+                        <input type="password" name="new_password" required minlength="8" class="input">
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Minimum 8 characters</p>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Confirm New Password</label>
+                        <input type="password" name="new_password_confirm" required class="input">
+                    </div>
+                    <button type="submit" class="btn btn-primary" :disabled="loading">
+                        <template x-if="loading">
+                            <svg class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                        </template>
+                        <span x-show="!loading">Update Password</span>
+                        <span x-show="loading" x-cloak>Updating...</span>
+                    </button>
+                </form>
+            </div>
+
+            <!-- Telegram Integration -->
+            <div class="card p-6">
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white mb-6 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-gray-400" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                    </svg>
+                    Telegram Integration
+                </h2>
+
+                {% if user.tg_chat_id %}
+                <div class="flex items-center justify-between p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl">
+                    <div class="flex items-center space-x-3">
+                        <div class="w-10 h-10 rounded-lg bg-green-500 flex items-center justify-center">
+                            <svg class="w-5 h-5 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <p class="font-medium text-green-800 dark:text-green-200">Telegram Connected</p>
+                            <p class="text-sm text-green-600 dark:text-green-400">You'll receive stream notifications</p>
+                        </div>
+                    </div>
+                    <button onclick="unlinkTelegram()" class="btn btn-secondary text-sm">
+                        Disconnect
+                    </button>
+                </div>
+                {% else %}
+                <div class="p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+                    <p class="text-gray-600 dark:text-gray-400 mb-4">
+                        Link your Telegram account to receive instant notifications when your streams start or stop.
+                    </p>
+                    <div class="space-y-3">
+                        <div class="flex items-start space-x-3">
+                            <span class="w-6 h-6 rounded-full bg-primary-500 text-white text-xs flex items-center justify-center flex-shrink-0 mt-0.5">1</span>
+                            <p class="text-sm text-gray-600 dark:text-gray-400">
+                                Open our Telegram bot: <a href="https://t.me/your_bot" class="text-primary-500 hover:underline font-medium">@YourBot</a>
+                            </p>
+                        </div>
+                        <div class="flex items-start space-x-3">
+                            <span class="w-6 h-6 rounded-full bg-primary-500 text-white text-xs flex items-center justify-center flex-shrink-0 mt-0.5">2</span>
+                            <div class="text-sm text-gray-600 dark:text-gray-400">
+                                <p>Send this command:</p>
+                                <code class="mt-1 block bg-gray-100 dark:bg-gray-700 px-3 py-2 rounded-lg text-gray-800 dark:text-gray-200 font-mono text-sm">/link {{ user.email }}</code>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Danger Zone -->
+            <div class="card p-6 border-red-200 dark:border-red-800/50">
+                <h2 class="text-lg font-semibold text-red-600 dark:text-red-400 mb-2 flex items-center">
+                    <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    Danger Zone
+                </h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">Irreversible and destructive actions</p>
+                <button onclick="deleteAccount()" class="btn btn-danger">
+                    Delete Account
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const form = e.target;
+    const data = {
+        current_password: form.current_password.value,
+        new_password: form.new_password.value,
+        new_password_confirm: form.new_password_confirm.value
+    };
+    const alpineData = form._x_dataStack[0];
+
+    if (data.new_password !== data.new_password_confirm) {
+        alpineData.error = true;
+        alpineData.message = 'New passwords do not match';
+        return;
+    }
+
+    alpineData.loading = true;
+    alpineData.message = '';
+
+    try {
+        const response = await fetch('/api/v1/auth/password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+            alpineData.error = false;
+            alpineData.message = 'Password updated successfully';
+            form.reset();
+            notify('Password updated!', 'success');
+        } else {
+            alpineData.error = true;
+            alpineData.message = result.detail || 'Failed to update password';
+        }
+    } catch (err) {
+        alpineData.error = true;
+        alpineData.message = 'Network error. Please try again.';
+    } finally {
+        alpineData.loading = false;
+    }
+});
+
+async function unlinkTelegram() {
+    if (!confirm('Unlink your Telegram account? You will stop receiving notifications.')) return;
+
+    try {
+        const response = await fetch('/api/v1/users/me/telegram', { method: 'DELETE' });
+        if (response.ok) {
+            notify('Telegram disconnected', 'success');
+            window.location.reload();
+        }
+    } catch (err) {
+        notify('Failed to unlink Telegram', 'error');
+    }
+}
+
+async function deleteAccount() {
+    if (!confirm('Are you ABSOLUTELY sure? This will permanently delete your account and all associated data. This action cannot be undone.')) return;
+
+    const email = prompt('Type your email to confirm deletion:');
+    if (email !== '{{ user.email }}') {
+        notify('Email did not match', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/v1/users/me', { method: 'DELETE' });
+        if (response.ok) {
+            window.location.href = '/login?deleted=1';
+        }
+    } catch (err) {
+        notify('Failed to delete account', 'error');
+    }
+}
+</script>
+{% endblock %}

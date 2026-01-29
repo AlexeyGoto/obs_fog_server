@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}Pending Approvals - Admin - OBS Fog Server{% endblock %}
+
+{% block content %}
+<div x-data="pendingApprovals()" x-init="loadPending()">
+    <!-- Header -->
+    <div class="mb-8">
+        <a href="/admin" class="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 mb-2 inline-block">&larr; Back to Admin</a>
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Pending Approvals</h1>
+        <p class="mt-1 text-gray-500 dark:text-gray-400">Review and approve new user registrations</p>
+    </div>
+
+    <!-- Empty State -->
+    <div x-show="!loading && pendingUsers.length === 0" class="card p-12 text-center">
+        <div class="w-16 h-16 mx-auto bg-green-100 dark:bg-green-900/30 rounded-2xl flex items-center justify-center mb-4">
+            <svg class="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+        </div>
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">All Caught Up!</h3>
+        <p class="text-gray-500 dark:text-gray-400">No pending approvals at the moment.</p>
+    </div>
+
+    <!-- Pending List -->
+    <div x-show="pendingUsers.length > 0" class="space-y-4">
+        <template x-for="user in pendingUsers" :key="user.id">
+            <div class="card p-6">
+                <div class="flex flex-col md:flex-row md:items-center md:justify-between">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-400 to-amber-500 flex items-center justify-center text-white font-bold text-lg" x-text="user.email[0].toUpperCase()"></div>
+                        <div>
+                            <h3 class="font-semibold text-gray-900 dark:text-white" x-text="user.email"></h3>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                Requested <span x-text="formatRelativeTime(user.approval_requested_at)"></span>
+                            </p>
+                        </div>
+                    </div>
+                    <div class="flex items-center space-x-3 mt-4 md:mt-0">
+                        <button @click="approveUser(user.id)" class="btn btn-primary">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                            </svg>
+                            Approve
+                        </button>
+                        <button @click="denyUser(user.id)" class="btn btn-danger">
+                            <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                            </svg>
+                            Deny
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </template>
+    </div>
+</div>
+
+<script>
+function pendingApprovals() {
+    return {
+        pendingUsers: [],
+        loading: true,
+
+        async loadPending() {
+            try {
+                const response = await fetch('/api/v1/users/admin/pending');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.pendingUsers = data.items || data || [];
+                }
+            } catch (err) {
+                console.error('Failed to load pending users:', err);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        async approveUser(userId) {
+            try {
+                const response = await fetch(`/api/v1/users/admin/${userId}/approve`, { method: 'POST' });
+                if (response.ok) {
+                    await this.loadPending();
+                    notify('User approved', 'success');
+                }
+            } catch (err) {
+                notify('Failed to approve user', 'error');
+            }
+        },
+
+        async denyUser(userId) {
+            const reason = prompt('Reason for denial (optional):');
+            try {
+                const response = await fetch(`/api/v1/users/admin/${userId}/deny`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ note: reason })
+                });
+                if (response.ok) {
+                    await this.loadPending();
+                    notify('User denied', 'success');
+                }
+            } catch (err) {
+                notify('Failed to deny user', 'error');
+            }
+        },
+
+        formatRelativeTime(dateStr) {
+            const date = new Date(dateStr);
+            const now = new Date();
+            const diffMs = now - date;
+            const diffMin = Math.floor(diffMs / 60000);
+            const diffHour = Math.floor(diffMin / 60);
+            const diffDay = Math.floor(diffHour / 24);
+
+            if (diffMin < 60) return `${diffMin}m ago`;
+            if (diffHour < 24) return `${diffHour}h ago`;
+            return `${diffDay}d ago`;
+        }
+    };
+}
+</script>
+{% endblock %}

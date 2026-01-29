@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="ru" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}OBS Fog Server{% endblock %}</title>
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        },
+                        accent: {
+                            50: '#fdf4ff',
+                            100: '#fae8ff',
+                            200: '#f5d0fe',
+                            300: '#f0abfc',
+                            400: '#e879f9',
+                            500: '#d946ef',
+                            600: '#c026d3',
+                            700: '#a21caf',
+                            800: '#86198f',
+                            900: '#701a75',
+                        },
+                    },
+                    animation: {
+                        'fade-in': 'fadeIn 0.3s ease-out',
+                        'slide-up': 'slideUp 0.3s ease-out',
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'gradient': 'gradient 8s ease infinite',
+                    },
+                    keyframes: {
+                        fadeIn: {
+                            '0%': { opacity: '0' },
+                            '100%': { opacity: '1' },
+                        },
+                        slideUp: {
+                            '0%': { opacity: '0', transform: 'translateY(10px)' },
+                            '100%': { opacity: '1', transform: 'translateY(0)' },
+                        },
+                        gradient: {
+                            '0%, 100%': { backgroundPosition: '0% 50%' },
+                            '50%': { backgroundPosition: '100% 50%' },
+                        },
+                    },
+                },
+            },
+        }
+    </script>
+
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="/static/css/app.css">
+
+    <style>
+        [x-cloak] { display: none !important; }
+
+        /* Gradient backgrounds */
+        .gradient-primary {
+            background: linear-gradient(135deg, #0ea5e9 0%, #8b5cf6 50%, #d946ef 100%);
+            background-size: 200% 200%;
+        }
+
+        .gradient-dark {
+            background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .dark .glass {
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        /* Cards */
+        .card {
+            background-color: white;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            border: 1px solid #f3f4f6;
+        }
+        .dark .card {
+            background-color: #1f2937;
+            border-color: #374151;
+        }
+
+        .card-hover {
+            transition: all 0.3s;
+        }
+        .card-hover:hover {
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            transform: translateY(-0.25rem);
+        }
+
+        /* Buttons */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0.625rem 1rem;
+            border-radius: 0.5rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .btn:focus {
+            outline: none;
+            ring: 2px;
+            ring-offset: 2px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(to right, #0ea5e9, #0284c7);
+            color: white;
+            box-shadow: 0 10px 15px -3px rgba(14, 165, 233, 0.25);
+        }
+        .btn-primary:hover {
+            background: linear-gradient(to right, #0284c7, #0369a1);
+        }
+
+        .btn-secondary {
+            background-color: #f3f4f6;
+            color: #374151;
+        }
+        .btn-secondary:hover {
+            background-color: #e5e7eb;
+        }
+        .dark .btn-secondary {
+            background-color: #374151;
+            color: #e5e7eb;
+        }
+        .dark .btn-secondary:hover {
+            background-color: #4b5563;
+        }
+
+        .btn-accent {
+            background: linear-gradient(to right, #d946ef, #c026d3);
+            color: white;
+            box-shadow: 0 10px 15px -3px rgba(217, 70, 239, 0.25);
+        }
+        .btn-accent:hover {
+            background: linear-gradient(to right, #c026d3, #a21caf);
+        }
+
+        .btn-danger {
+            background-color: #ef4444;
+            color: white;
+            box-shadow: 0 10px 15px -3px rgba(239, 68, 68, 0.25);
+        }
+        .btn-danger:hover {
+            background-color: #dc2626;
+        }
+
+        .btn-ghost {
+            background-color: transparent;
+            color: #4b5563;
+        }
+        .btn-ghost:hover {
+            background-color: #f3f4f6;
+        }
+        .dark .btn-ghost {
+            color: #9ca3af;
+        }
+        .dark .btn-ghost:hover {
+            background-color: #1f2937;
+        }
+
+        /* Inputs */
+        .input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            border: 1px solid #e5e7eb;
+            background-color: white;
+            color: #111827;
+            transition: all 0.2s;
+        }
+        .input:focus {
+            outline: none;
+            ring: 2px;
+            ring-color: #0ea5e9;
+            border-color: transparent;
+        }
+        .input::placeholder {
+            color: #9ca3af;
+        }
+        .dark .input {
+            border-color: #4b5563;
+            background-color: #374151;
+            color: white;
+        }
+        .dark .input::placeholder {
+            color: #6b7280;
+        }
+
+        /* Status badges */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.25rem 0.625rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .badge-success { background-color: #dcfce7; color: #166534; }
+        .dark .badge-success { background-color: rgba(34, 197, 94, 0.2); color: #4ade80; }
+
+        .badge-warning { background-color: #fef9c3; color: #854d0e; }
+        .dark .badge-warning { background-color: rgba(234, 179, 8, 0.2); color: #facc15; }
+
+        .badge-danger { background-color: #fee2e2; color: #991b1b; }
+        .dark .badge-danger { background-color: rgba(239, 68, 68, 0.2); color: #f87171; }
+
+        .badge-info { background-color: #dbeafe; color: #1e40af; }
+        .dark .badge-info { background-color: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+
+        .badge-premium { background: linear-gradient(to right, #fbbf24, #f97316); color: white; }
+
+        /* Live indicator */
+        .live-indicator {
+            position: relative;
+            display: flex;
+            height: 0.75rem;
+            width: 0.75rem;
+        }
+        .live-indicator::before {
+            content: '';
+            position: absolute;
+            display: inline-flex;
+            height: 100%;
+            width: 100%;
+            border-radius: 9999px;
+            background-color: #f87171;
+            opacity: 0.75;
+            animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+        .live-indicator::after {
+            content: '';
+            position: relative;
+            display: inline-flex;
+            border-radius: 9999px;
+            height: 0.75rem;
+            width: 0.75rem;
+            background-color: #ef4444;
+        }
+
+        @keyframes ping {
+            75%, 100% {
+                transform: scale(2);
+                opacity: 0;
+            }
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f3f4f6; }
+        .dark ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 9999px; }
+        .dark ::-webkit-scrollbar-thumb { background: #4b5563; }
+        ::-webkit-scrollbar-thumb:hover { background: #9ca3af; }
+        .dark ::-webkit-scrollbar-thumb:hover { background: #6b7280; }
+    </style>
+
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="min-h-full bg-gray-50 dark:bg-gray-900 transition-colors duration-300"
+      x-data="{
+          darkMode: localStorage.getItem('darkMode') === 'true',
+          mobileMenu: false,
+          notifications: []
+      }"
+      :class="{ 'dark': darkMode }"
+      @notify.window="notifications.push($event.detail); setTimeout(() => notifications.shift(), 5000)">
+
+    <!-- Navigation -->
+    <nav class="sticky top-0 z-50 bg-white/80 dark:bg-gray-800/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-700">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <!-- Logo -->
+                <div class="flex items-center">
+                    <a href="/" class="flex items-center space-x-3 group">
+                        <div class="relative">
+                            <div class="absolute -inset-1 bg-gradient-to-r from-primary-500 to-accent-500 rounded-lg blur opacity-25 group-hover:opacity-50 transition duration-300"></div>
+                            <div class="relative bg-white dark:bg-gray-800 rounded-lg p-2">
+                                <svg class="w-6 h-6 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                                </svg>
+                            </div>
+                        </div>
+                        <span class="text-xl font-bold bg-gradient-to-r from-primary-500 to-accent-500 bg-clip-text text-transparent">
+                            OBS Fog
+                        </span>
+                    </a>
+                </div>
+
+                <!-- Desktop Navigation -->
+                <div class="hidden md:flex items-center space-x-1">
+                    {% if user %}
+                    <a href="/dashboard" class="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                        Панель
+                    </a>
+                    <a href="/steamslot" class="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                        Steam Slot
+                    </a>
+                    <a href="/profile" class="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                        Профиль
+                    </a>
+                    {% if user.role.value == 'admin' %}
+                    <a href="/admin" class="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                        Админ
+                    </a>
+                    {% endif %}
+
+                    <!-- User Menu -->
+                    <div class="relative ml-4" x-data="{ open: false }">
+                        <button @click="open = !open" class="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-r from-primary-500 to-accent-500 flex items-center justify-center text-white font-medium">
+                                {{ user.email[0]|upper }}
+                            </div>
+                            <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                            </svg>
+                        </button>
+
+                        <div x-show="open" @click.away="open = false" x-cloak
+                             x-transition:enter="transition ease-out duration-200"
+                             x-transition:enter-start="opacity-0 scale-95"
+                             x-transition:enter-end="opacity-100 scale-100"
+                             x-transition:leave="transition ease-in duration-150"
+                             x-transition:leave-start="opacity-100 scale-100"
+                             x-transition:leave-end="opacity-0 scale-95"
+                             class="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 py-2">
+                            <div class="px-4 py-2 border-b border-gray-100 dark:border-gray-700">
+                                <p class="text-sm font-medium text-gray-900 dark:text-white">{{ user.email }}</p>
+                                <p class="text-xs text-gray-500">
+                                    {% if user.is_premium %}<span class="badge badge-premium">Premium</span>{% else %}Базовый{% endif %}
+                                </p>
+                            </div>
+                            <a href="/profile" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">Настройки</a>
+                            <a href="/premium" class="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">Подписка</a>
+                            <hr class="my-2 border-gray-100 dark:border-gray-700">
+                            <button onclick="logout()" class="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700">
+                                Выйти
+                            </button>
+                        </div>
+                    </div>
+                    {% else %}
+                    <a href="/login" class="px-4 py-2 rounded-lg text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                        Войти
+                    </a>
+                    <a href="/register" class="btn btn-primary">
+                        Регистрация
+                    </a>
+                    {% endif %}
+
+                    <!-- Dark Mode Toggle -->
+                    <button @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode)"
+                            class="ml-2 p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+                        <svg x-show="!darkMode" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+                        </svg>
+                        <svg x-show="darkMode" x-cloak class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <!-- Mobile menu button -->
+                <div class="flex items-center md:hidden">
+                    <button @click="mobileMenu = !mobileMenu" class="p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700">
+                        <svg x-show="!mobileMenu" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+                        </svg>
+                        <svg x-show="mobileMenu" x-cloak class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Mobile Navigation -->
+        <div x-show="mobileMenu" x-cloak class="md:hidden border-t border-gray-200 dark:border-gray-700">
+            <div class="px-4 py-3 space-y-1">
+                {% if user %}
+                <a href="/dashboard" class="block px-4 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">Панель</a>
+                <a href="/steamslot" class="block px-4 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">Steam Slot</a>
+                <a href="/profile" class="block px-4 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">Профиль</a>
+                <button onclick="logout()" class="w-full text-left px-4 py-2 rounded-lg text-red-600 hover:bg-gray-100 dark:hover:bg-gray-700">Выйти</button>
+                {% else %}
+                <a href="/login" class="block px-4 py-2 rounded-lg text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">Войти</a>
+                <a href="/register" class="block px-4 py-2 rounded-lg bg-primary-500 text-white">Регистрация</a>
+                {% endif %}
+            </div>
+        </div>
+    </nav>
+
+    <!-- Notifications Toast -->
+    <div class="fixed top-20 right-4 z-50 space-y-2">
+        <template x-for="(notification, index) in notifications" :key="index">
+            <div x-show="true"
+                 x-transition:enter="transition ease-out duration-300"
+                 x-transition:enter-start="opacity-0 transform translate-x-8"
+                 x-transition:enter-end="opacity-100 transform translate-x-0"
+                 x-transition:leave="transition ease-in duration-200"
+                 x-transition:leave-start="opacity-100"
+                 x-transition:leave-end="opacity-0"
+                 :class="{
+                     'bg-green-500': notification.type === 'success',
+                     'bg-red-500': notification.type === 'error',
+                     'bg-blue-500': notification.type === 'info',
+                     'bg-yellow-500': notification.type === 'warning'
+                 }"
+                 class="px-4 py-3 rounded-lg text-white shadow-lg flex items-center space-x-3 min-w-64">
+                <span x-text="notification.message"></span>
+                <button @click="notifications.splice(index, 1)" class="ml-auto">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+        </template>
+    </div>
+
+    <!-- Flash messages -->
+    {% if messages %}
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+        {% for message in messages %}
+        <div class="mb-2 p-4 rounded-lg animate-fade-in
+                    {% if message.type == 'error' %}bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800
+                    {% elif message.type == 'success' %}bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800
+                    {% else %}bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800{% endif %}"
+             x-data="{ show: true }" x-show="show" x-transition>
+            <div class="flex justify-between items-center">
+                <span>{{ message.text }}</span>
+                <button @click="show = false" class="ml-4 hover:opacity-70">&times;</button>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- Main content -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+                <div class="col-span-1 md:col-span-2">
+                    <div class="flex items-center space-x-2 mb-4">
+                        <svg class="w-6 h-6 text-primary-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                        </svg>
+                        <span class="text-lg font-bold text-gray-900 dark:text-white">OBS Fog Server</span>
+                    </div>
+                    <p class="text-gray-500 dark:text-gray-400 text-sm">
+                        Профессиональная платформа для управления стримами. Стримьте, записывайте и делитесь.
+                    </p>
+                </div>
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-4">Продукт</h3>
+                    <ul class="space-y-2 text-sm text-gray-500 dark:text-gray-400">
+                        <li><a href="/dashboard" class="hover:text-primary-500 transition-colors">Панель управления</a></li>
+                        <li><a href="/steamslot" class="hover:text-primary-500 transition-colors">Steam Slot</a></li>
+                        <li><a href="/docs" class="hover:text-primary-500 transition-colors">API документация</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h3 class="text-sm font-semibold text-gray-900 dark:text-white mb-4">Поддержка</h3>
+                    <ul class="space-y-2 text-sm text-gray-500 dark:text-gray-400">
+                        <li><a href="#" class="hover:text-primary-500 transition-colors">Справка</a></li>
+                        <li><a href="#" class="hover:text-primary-500 transition-colors">Контакты</a></li>
+                        <li><a href="#" class="hover:text-primary-500 transition-colors">Статус</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="mt-8 pt-8 border-t border-gray-200 dark:border-gray-700 flex flex-col md:flex-row justify-between items-center">
+                <span class="text-sm text-gray-500 dark:text-gray-400">v2.0.0 &copy; 2025 OBS Fog Server</span>
+                <div class="flex items-center space-x-4 mt-4 md:mt-0">
+                    <button @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode)"
+                            class="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors">
+                        <span x-show="!darkMode">🌙 Тёмная</span>
+                        <span x-show="darkMode" x-cloak>☀️ Светлая</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Global Scripts -->
+    <script src="/static/js/app.js"></script>
+    <script>
+        // Logout function
+        async function logout() {
+            await fetch('/api/v1/auth/logout', { method: 'POST' });
+            window.location.href = '/login';
+        }
+
+        // Notify helper
+        function notify(message, type = 'info') {
+            window.dispatchEvent(new CustomEvent('notify', {
+                detail: { message, type }
+            }));
+        }
+
+        // Copy to clipboard
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                notify('Скопировано!', 'success');
+            });
+        }
+    </script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

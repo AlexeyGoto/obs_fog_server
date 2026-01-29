@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+
+{% block title %}Manage Users - Admin - OBS Fog Server{% endblock %}
+
+{% block content %}
+<div x-data="adminUsers()" x-init="loadUsers()">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <a href="/admin" class="text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 mb-2 inline-block">&larr; Back to Admin</a>
+            <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Manage Users</h1>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card p-4 mb-6">
+        <div class="flex flex-wrap gap-4">
+            <select x-model="filter.role" @change="loadUsers()" class="input w-auto">
+                <option value="">All Roles</option>
+                <option value="user">User</option>
+                <option value="premium">Premium</option>
+                <option value="admin">Admin</option>
+            </select>
+            <select x-model="filter.status" @change="loadUsers()" class="input w-auto">
+                <option value="">All Status</option>
+                <option value="approved">Approved</option>
+                <option value="pending">Pending</option>
+                <option value="denied">Denied</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Users Table -->
+    <div class="card overflow-hidden">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>User</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <template x-for="user in users" :key="user.id">
+                    <tr>
+                        <td>
+                            <div class="flex items-center space-x-3">
+                                <div class="w-10 h-10 rounded-full bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center text-white font-medium" x-text="user.email[0].toUpperCase()"></div>
+                                <div>
+                                    <p class="font-medium text-gray-900 dark:text-white" x-text="user.email"></p>
+                                    <p class="text-sm text-gray-500" x-text="'ID: ' + user.id"></p>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            <span class="badge" :class="{
+                                'badge-info': user.role === 'user',
+                                'badge-premium': user.role === 'premium',
+                                'badge-danger': user.role === 'admin'
+                            }" x-text="user.role"></span>
+                        </td>
+                        <td>
+                            <span class="badge" :class="{
+                                'badge-success': user.approval_status === 'approved',
+                                'badge-warning': user.approval_status === 'pending',
+                                'badge-danger': user.approval_status === 'denied'
+                            }" x-text="user.approval_status"></span>
+                        </td>
+                        <td class="text-sm text-gray-500" x-text="formatDate(user.created_at)"></td>
+                        <td>
+                            <div class="flex items-center space-x-2">
+                                <button @click="editUser(user)" class="text-primary-500 hover:text-primary-600">Edit</button>
+                                <button @click="deleteUser(user.id)" class="text-red-500 hover:text-red-600">Delete</button>
+                            </div>
+                        </td>
+                    </tr>
+                </template>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="flex items-center justify-between mt-6">
+        <p class="text-sm text-gray-500">
+            Showing <span x-text="users.length"></span> of <span x-text="total"></span> users
+        </p>
+        <div class="flex space-x-2">
+            <button @click="page > 1 && (page--, loadUsers())" :disabled="page <= 1" class="btn btn-secondary" :class="{ 'opacity-50': page <= 1 }">Previous</button>
+            <button @click="page++; loadUsers()" :disabled="users.length < perPage" class="btn btn-secondary" :class="{ 'opacity-50': users.length < perPage }">Next</button>
+        </div>
+    </div>
+</div>
+
+<script>
+function adminUsers() {
+    return {
+        users: [],
+        total: 0,
+        page: 1,
+        perPage: 20,
+        filter: { role: '', status: '' },
+
+        async loadUsers() {
+            try {
+                let url = `/api/v1/users/admin/list?page=${this.page}&per_page=${this.perPage}`;
+                if (this.filter.role) url += `&role=${this.filter.role}`;
+                if (this.filter.status) url += `&approval_status=${this.filter.status}`;
+
+                const response = await fetch(url);
+                if (response.ok) {
+                    const data = await response.json();
+                    this.users = data.items || [];
+                    this.total = data.total || 0;
+                }
+            } catch (err) {
+                console.error('Failed to load users:', err);
+            }
+        },
+
+        editUser(user) {
+            // TODO: Open edit modal
+            notify('Edit functionality coming soon', 'info');
+        },
+
+        async deleteUser(userId) {
+            if (!confirm('Delete this user?')) return;
+            try {
+                const response = await fetch(`/api/v1/users/admin/${userId}`, { method: 'DELETE' });
+                if (response.ok) {
+                    await this.loadUsers();
+                    notify('User deleted', 'success');
+                }
+            } catch (err) {
+                notify('Failed to delete user', 'error');
+            }
+        },
+
+        formatDate(dateStr) {
+            return new Date(dateStr).toLocaleDateString();
+        }
+    };
+}
+</script>
+{% endblock %}

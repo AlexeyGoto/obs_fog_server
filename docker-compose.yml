@@ -1,63 +1,137 @@
+# OBS Fog Server - Production Docker Compose
+# Usage: docker compose up -d
+
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: obsfog_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-obsfog}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-obsfog_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-obsfog}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-obsfog}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - obsfog_network
+
+  # Redis for rate limiting and caching
+  redis:
+    image: redis:7-alpine
+    container_name: obsfog_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - obsfog_network
+
+  # Main API Application
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: obsfog_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-obsfog}:${POSTGRES_PASSWORD:-obsfog_secret}@postgres:5432/${POSTGRES_DB:-obsfog}
+      - REDIS_URL=redis://redis:6379/0
+      - HLS_BASE_URL=http://nginx:8080/hls
+      - ENVIRONMENT=production
+      - DEBUG=false
+    volumes:
+      - ./data/videos:/data/videos
+    networks:
+      - obsfog_network
+    labels:
+      - "com.obsfog.service=api"
+
+  # Background Worker for clip processing
+  worker:
+    build:
+      context: .
+      dockerfile: worker_service/Dockerfile
+    container_name: obsfog_worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-obsfog}:${POSTGRES_PASSWORD:-obsfog_secret}@postgres:5432/${POSTGRES_DB:-obsfog}
+      - HLS_BASE_URL=http://nginx:8080/hls
+    volumes:
+      - ./data/videos:/data/videos
+      - ./data/hls:/data/hls:ro
+    networks:
+      - obsfog_network
+
+  # Telegram Bot
+  bot:
+    build:
+      context: .
+      dockerfile: bot_service/Dockerfile
+    container_name: obsfog_bot
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-obsfog}:${POSTGRES_PASSWORD:-obsfog_secret}@postgres:5432/${POSTGRES_DB:-obsfog}
+      - API_BASE_URL=http://api:8000
+    networks:
+      - obsfog_network
+
+  # NGINX with RTMP module
   nginx:
     build:
       context: ./nginx
+      dockerfile: Dockerfile
+    container_name: obsfog_nginx
     restart: unless-stopped
+    depends_on:
+      - api
     ports:
-    - 1935:1935
-    - 8080:8080
+      - "1935:1935"    # RTMP
+      - "8080:8080"    # HTTP/HLS
     volumes:
-    - ./data/hls:/data/hls
+      - ./data/hls:/data/hls
     ulimits:
       nofile:
         soft: 200000
         hard: 200000
-    depends_on:
-    - api
-    - steamslot
-  api:
-    build:
-      context: ./obs
-    restart: unless-stopped
-    env_file:
-    - .env
-    environment:
-      HLS_BASE_URL: ${HLS_BASE_URL:-http://nginx:8080/hls}
-    volumes:
-    - ./data/db:/data/db
-    - ./data/videos:/data/videos
-  worker:
-    build:
-      context: .
-      dockerfile: worker/Dockerfile
-    restart: unless-stopped
-    env_file:
-    - .env
-    volumes:
-    - ./data/db:/data/db
-    - ./data/videos:/data/videos
-    depends_on:
-    - api
-    - nginx
-  bot:
-    build:
-      context: .
-      dockerfile: bot/Dockerfile
-    restart: unless-stopped
-    env_file:
-    - .env
-    depends_on:
-    - api
-  steamslot:
-    build:
-      context: ./steamslot
-    restart: unless-stopped
-    env_file:
-    - .env
-    environment:
-      STEAMSLOT_ROOT_PATH: /steamslot
-      STEAMSLOT_DATABASE_URL: ${STEAMSLOT_DATABASE_URL:-sqlite:////data/db/steamslot.db}
-    expose:
-    - '8001'
-    volumes:
-    - ./data/db:/data/db
+    networks:
+      - obsfog_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  obsfog_network:
+    driver: bridge

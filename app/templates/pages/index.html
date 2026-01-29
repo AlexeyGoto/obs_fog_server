@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+
+{% block title %}OBS Fog Server - Professional Streaming Management{% endblock %}
+
+{% block content %}
+<!-- Hero Section -->
+<div class="relative -mt-8 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-20 md:py-32 overflow-hidden">
+    <!-- Background gradient -->
+    <div class="absolute inset-0 bg-gradient-to-br from-primary-500/10 via-transparent to-accent-500/10"></div>
+    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[800px] bg-gradient-to-b from-primary-500/20 to-transparent rounded-full blur-3xl -z-10"></div>
+
+    <div class="relative max-w-4xl mx-auto text-center">
+        <div class="inline-flex items-center px-4 py-2 rounded-full bg-primary-500/10 text-primary-600 dark:text-primary-400 text-sm font-medium mb-6">
+            <span class="relative flex h-2 w-2 mr-2">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-2 w-2 bg-primary-500"></span>
+            </span>
+            Now with Telegram Wallet USDT Payments
+        </div>
+
+        <h1 class="text-4xl md:text-6xl font-bold text-gray-900 dark:text-white mb-6 tracking-tight">
+            Stream Smarter with
+            <span class="bg-gradient-to-r from-primary-500 to-accent-500 bg-clip-text text-transparent">OBS Fog</span>
+        </h1>
+
+        <p class="text-xl text-gray-600 dark:text-gray-400 mb-10 max-w-2xl mx-auto">
+            Professional streaming management platform. Multiple PCs, one dashboard.
+            Monitor, record, and control your streams with ease.
+        </p>
+
+        <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+            {% if user %}
+            <a href="/dashboard" class="btn btn-primary text-lg px-8 py-3">
+                Go to Dashboard
+                <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                </svg>
+            </a>
+            {% else %}
+            <a href="/register" class="btn btn-primary text-lg px-8 py-3">
+                Get Started Free
+                <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                </svg>
+            </a>
+            <a href="/login" class="btn btn-secondary text-lg px-8 py-3">
+                Sign In
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Features Section -->
+<div class="py-20">
+    <div class="text-center mb-16">
+        <h2 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+            Everything You Need to Stream
+        </h2>
+        <p class="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
+            Powerful features to manage all your streaming PCs from a single dashboard
+        </p>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <!-- Feature 1 -->
+        <div class="card card-hover p-8">
+            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 flex items-center justify-center mb-6 shadow-lg shadow-primary-500/25">
+                <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-3">Multi-PC Management</h3>
+            <p class="text-gray-600 dark:text-gray-400">
+                Manage unlimited streaming PCs from a single dashboard. Each PC gets its own stream key and configuration.
+            </p>
+        </div>
+
+        <!-- Feature 2 -->
+        <div class="card card-hover p-8">
+            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center mb-6 shadow-lg shadow-green-500/25">
+                <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.636 18.364a9 9 0 010-12.728m12.728 0a9 9 0 010 12.728m-9.9-2.829a5 5 0 010-7.07m7.072 0a5 5 0 010 7.07M13 12a1 1 0 11-2 0 1 1 0 012 0z"/>
+                </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-3">Real-time Monitoring</h3>
+            <p class="text-gray-600 dark:text-gray-400">
+                Track stream status in real-time. Know instantly when streams start, stop, or encounter issues.
+            </p>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class="card card-hover p-8">
+            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center mb-6 shadow-lg shadow-amber-500/25">
+                <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-3">Auto-Configuration</h3>
+            <p class="text-gray-600 dark:text-gray-400">
+                Download pre-configured OBS profiles and setup scripts. Get streaming in minutes, not hours.
+            </p>
+        </div>
+
+        <!-- Feature 4 -->
+        <div class="card card-hover p-8">
+            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center mb-6 shadow-lg shadow-blue-500/25">
+                <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/>
+                </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-3">Telegram Notifications</h3>
+            <p class="text-gray-600 dark:text-gray-400">
+                Get instant Telegram alerts when streams start or stop. Stay informed even away from your desk.
+            </p>
+        </div>
+
+        <!-- Feature 5 -->
+        <div class="card card-hover p-8">
+            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-accent-500 to-pink-600 flex items-center justify-center mb-6 shadow-lg shadow-accent-500/25">
+                <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+                </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-3">USDT Payments</h3>
+            <p class="text-gray-600 dark:text-gray-400">
+                Pay for premium features with USDT via Telegram Wallet. Fast, secure, and borderless payments.
+            </p>
+        </div>
+
+        <!-- Feature 6 -->
+        <div class="card card-hover p-8">
+            <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-red-500 to-rose-600 flex items-center justify-center mb-6 shadow-lg shadow-red-500/25">
+                <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+            </div>
+            <h3 class="text-xl font-semibold text-gray-900 dark:text-white mb-3">Secure by Design</h3>
+            <p class="text-gray-600 dark:text-gray-400">
+                JWT authentication, rate limiting, and encrypted stream keys. Your streams are protected.
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- CTA Section -->
+<div class="py-20">
+    <div class="card p-12 bg-gradient-to-br from-primary-500 to-accent-500 text-white text-center relative overflow-hidden">
+        <div class="absolute inset-0 bg-black/10"></div>
+        <div class="absolute top-0 right-0 w-64 h-64 bg-white/10 rounded-full -mr-32 -mt-32 blur-3xl"></div>
+        <div class="absolute bottom-0 left-0 w-64 h-64 bg-white/10 rounded-full -ml-32 -mb-32 blur-3xl"></div>
+
+        <div class="relative">
+            <h2 class="text-3xl md:text-4xl font-bold mb-4">Ready to Start Streaming?</h2>
+            <p class="text-lg text-white/80 mb-8 max-w-xl mx-auto">
+                Join thousands of streamers who trust OBS Fog for their streaming needs.
+            </p>
+            {% if user %}
+            <a href="/dashboard" class="inline-flex items-center px-8 py-3 bg-white text-primary-600 font-semibold rounded-xl hover:bg-gray-100 transition-colors shadow-lg">
+                Go to Dashboard
+                <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                </svg>
+            </a>
+            {% else %}
+            <a href="/register" class="inline-flex items-center px-8 py-3 bg-white text-primary-600 font-semibold rounded-xl hover:bg-gray-100 transition-colors shadow-lg">
+                Create Free Account
+                <svg class="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>
+                </svg>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

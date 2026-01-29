@@ -30,4 +30,8 @@ RUN set -eux; rm -rf /tmp/src; apk del .build-deps
 
 COPY nginx.conf /etc/nginx/nginx.conf
 EXPOSE 1935 8080
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["nginx","-g","daemon off;"]

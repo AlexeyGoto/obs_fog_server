@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block title %}Premium - OBS Fog Server{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Header -->
+    <div class="text-center mb-12">
+        <div class="inline-flex items-center px-4 py-2 rounded-full bg-gradient-to-r from-amber-400/20 to-orange-500/20 text-amber-600 dark:text-amber-400 text-sm font-medium mb-4">
+            <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+            </svg>
+            Upgrade to Premium
+        </div>
+        <h1 class="text-4xl font-bold text-gray-900 dark:text-white mb-4">Unlock Full Potential</h1>
+        <p class="text-lg text-gray-600 dark:text-gray-400">Get access to premium features and priority support</p>
+    </div>
+
+    <!-- Pricing Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
+        <!-- Free Plan -->
+        <div class="card p-8 relative">
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Free</h3>
+            <div class="flex items-baseline mb-6">
+                <span class="text-4xl font-bold text-gray-900 dark:text-white">$0</span>
+                <span class="text-gray-500 ml-2">/forever</span>
+            </div>
+            <ul class="space-y-3 mb-8">
+                <li class="flex items-center text-gray-600 dark:text-gray-400">
+                    <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Up to 3 PCs
+                </li>
+                <li class="flex items-center text-gray-600 dark:text-gray-400">
+                    <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Basic stream monitoring
+                </li>
+                <li class="flex items-center text-gray-600 dark:text-gray-400">
+                    <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    OBS profile downloads
+                </li>
+                <li class="flex items-center text-gray-400">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    Telegram notifications
+                </li>
+                <li class="flex items-center text-gray-400">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                    Steam Slot access
+                </li>
+            </ul>
+            <button class="btn btn-secondary w-full" disabled>Current Plan</button>
+        </div>
+
+        <!-- Premium Plan -->
+        <div class="card p-8 relative border-2 border-amber-400 dark:border-amber-500">
+            <div class="absolute -top-3 left-1/2 -translate-x-1/2">
+                <span class="px-4 py-1 bg-gradient-to-r from-amber-400 to-orange-500 text-white text-sm font-semibold rounded-full">
+                    RECOMMENDED
+                </span>
+            </div>
+            <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-2">Premium</h3>
+            <div class="flex items-baseline mb-6">
+                <span class="text-4xl font-bold text-gray-900 dark:text-white">$9.99</span>
+                <span class="text-gray-500 ml-2">/month</span>
+            </div>
+            <ul class="space-y-3 mb-8">
+                <li class="flex items-center text-gray-600 dark:text-gray-400">
+                    <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    <strong>Unlimited</strong>&nbsp;PCs
+                </li>
+                <li class="flex items-center text-gray-600 dark:text-gray-400">
+                    <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Advanced analytics
+                </li>
+                <li class="flex items-center text-gray-600 dark:text-gray-400">
+                    <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    OBS profile downloads
+                </li>
+                <li class="flex items-center text-gray-600 dark:text-gray-400">
+                    <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Telegram notifications
+                </li>
+                <li class="flex items-center text-gray-600 dark:text-gray-400">
+                    <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Steam Slot access
+                </li>
+                <li class="flex items-center text-gray-600 dark:text-gray-400">
+                    <svg class="w-5 h-5 text-green-500 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+                    </svg>
+                    Priority support
+                </li>
+            </ul>
+            <button onclick="startPayment()" class="btn btn-accent w-full">
+                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                </svg>
+                Pay with Telegram Wallet
+            </button>
+        </div>
+    </div>
+
+    <!-- Payment Methods -->
+    <div class="card p-6 text-center">
+        <h3 class="text-lg font-semibold text-gray-900 dark:text-white mb-4">Payment Methods</h3>
+        <p class="text-gray-600 dark:text-gray-400 mb-6">We accept USDT payments via Telegram Wallet for fast and secure transactions.</p>
+        <div class="flex items-center justify-center space-x-8">
+            <div class="flex items-center space-x-2 text-gray-500">
+                <svg class="w-8 h-8" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z"/>
+                </svg>
+                <span>Telegram Wallet</span>
+            </div>
+            <div class="flex items-center space-x-2 text-gray-500">
+                <svg class="w-8 h-8" viewBox="0 0 32 32" fill="currentColor">
+                    <circle cx="16" cy="16" r="14" fill="#26A17B"/>
+                    <path d="M17.922 17.383v-.002c-.11.008-.677.042-1.942.042-1.01 0-1.721-.03-1.971-.042v.003c-3.888-.171-6.79-.848-6.79-1.658 0-.809 2.902-1.486 6.79-1.66v2.644c.254.018.982.061 1.988.061 1.207 0 1.812-.05 1.925-.06v-2.643c3.88.173 6.775.85 6.775 1.658 0 .81-2.895 1.485-6.775 1.657m0-3.59v-2.366h5.414V7.819H8.595v3.608h5.414v2.365c-4.4.202-7.709 1.074-7.709 2.118 0 1.044 3.309 1.915 7.709 2.118v7.582h3.913v-7.584c4.393-.202 7.694-1.073 7.694-2.116 0-1.043-3.301-1.914-7.694-2.117" fill="#fff"/>
+                </svg>
+                <span>USDT (TON)</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function startPayment() {
+    try {
+        notify('Создание счёта...', 'info');
+        const response = await fetch('/api/v1/payments/create-invoice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: 'Premium подписка' })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            if (data.invoice_link) {
+                window.open(data.invoice_link, '_blank');
+                notify('Счёт создан! Откройте ссылку в Telegram.', 'success');
+            } else {
+                notify('Счёт создан! Проверьте Telegram.', 'success');
+            }
+        } else {
+            const error = await response.json();
+            notify(error.detail || 'Ошибка создания счёта', 'error');
+        }
+    } catch (err) {
+        notify('Ошибка сети', 'error');
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,127 @@
+# OBS Fog Server - Development Docker Compose
+# Usage: docker compose -f docker-compose.dev.yml up
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    container_name: obsfog_dev_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: obsfog
+      POSTGRES_PASSWORD: devpassword
+      POSTGRES_DB: obsfog_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U obsfog"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    container_name: obsfog_dev_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # API with hot reload
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: obsfog_dev_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://obsfog:devpassword@postgres:5432/obsfog_dev
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=dev_secret_change_in_production
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID:-0}
+      - APP_BASE_URL=http://localhost:8080
+      - HLS_BASE_URL=http://nginx:8080/hls
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - APPROVAL_REQUIRED=false
+      - SESSION_SECURE=false
+      - SESSION_COOKIE_NAME=obsfog_session
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+      - ./data/videos:/data/videos
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+  # Worker for clip processing
+  worker:
+    build:
+      context: .
+      dockerfile: worker_service/Dockerfile
+    container_name: obsfog_dev_worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://obsfog:devpassword@postgres:5432/obsfog_dev
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - HLS_BASE_URL=http://nginx:8080/hls
+    volumes:
+      - ./data/videos:/data/videos
+      - ./data/hls:/data/hls:ro
+    # Note: Don't mount full volume - it overwrites copied app modules
+
+  # Bot
+  bot:
+    build:
+      context: .
+      dockerfile: bot_service/Dockerfile
+    container_name: obsfog_dev_bot
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      api:
+        condition: service_started
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://obsfog:devpassword@postgres:5432/obsfog_dev
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+      - TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID:-0}
+      - API_BASE_URL=http://api:8000
+      - APPROVAL_REQUIRED=false
+    # Note: Don't mount full volume here - it overwrites copied app modules
+    # For development, rebuild container after changes: docker compose build bot
+
+  # NGINX for RTMP
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: obsfog_dev_nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "1935:1935"
+      - "8080:8080"
+    volumes:
+      - ./data/hls:/data/hls
+
+volumes:
+  postgres_dev_data:

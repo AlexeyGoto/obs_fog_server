@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(docker compose config:*)",
+      "Bash(git -C \"D:\\\\Dev\\\\Projects\\\\obs_fog_server\" log --oneline --all)",
+      "Bash(docker compose:*)",
+      "Bash(python:*)",
+      "Bash(curl:*)",
+      "Bash(docker-compose:*)",
+      "Bash(docker:*)",
+      "Bash(ls:*)"
+    ]
+  }
+}

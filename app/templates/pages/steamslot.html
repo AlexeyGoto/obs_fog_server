@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}Steam Slot - OBS Fog Server{% endblock %}
+
+{% block content %}
+<div x-data="steamSlot()" x-init="init()">
+    <!-- Page Header -->
+    <div class="mb-8">
+        <h1 class="text-3xl font-bold text-gray-900 dark:text-white">Steam Slot</h1>
+        <p class="mt-1 text-gray-500 dark:text-gray-400">Rent Steam accounts for your streams</p>
+    </div>
+
+    <!-- Info Card -->
+    <div class="card p-6 mb-8 bg-gradient-to-r from-blue-500/10 to-indigo-500/10 border-blue-200 dark:border-blue-800">
+        <div class="flex items-start space-x-4">
+            <div class="p-3 bg-blue-500 rounded-xl">
+                <svg class="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/>
+                </svg>
+            </div>
+            <div>
+                <h3 class="font-semibold text-gray-900 dark:text-white">How Steam Slot Works</h3>
+                <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    Rent Steam accounts with your favorite games. Perfect for streaming without buying multiple copies. Accounts are automatically returned when lease expires.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Available Accounts -->
+    <div class="mb-8">
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Available Accounts</h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <template x-for="account in availableAccounts" :key="account.id">
+                <div class="card card-hover p-6">
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-gray-700 to-gray-900 flex items-center justify-center">
+                            <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2C6.48 2 2 6.48 2 12c0 4.42 2.87 8.17 6.84 9.49.5.09.66-.22.66-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.64 0 0 .84-.27 2.75 1.02.8-.22 1.65-.33 2.5-.33.85 0 1.7.11 2.5.33 1.91-1.29 2.75-1.02 2.75-1.02.55 1.37.2 2.39.1 2.64.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.68-4.57 4.93.36.31.68.92.68 1.85v2.74c0 .27.16.58.67.48C19.14 20.16 22 16.42 22 12c0-5.52-4.48-10-10-10z"/>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-gray-900 dark:text-white" x-text="account.name || 'Steam Account'"></h3>
+                            <p class="text-sm text-gray-500" x-text="account.games_count + ' games'"></p>
+                        </div>
+                    </div>
+                    <div class="space-y-2 mb-4">
+                        <template x-for="game in account.games.slice(0, 3)" :key="game">
+                            <span class="inline-block px-2 py-1 bg-gray-100 dark:bg-gray-700 rounded text-xs text-gray-600 dark:text-gray-400 mr-1" x-text="game"></span>
+                        </template>
+                        <span x-show="account.games.length > 3" class="text-xs text-gray-500">+<span x-text="account.games.length - 3"></span> more</span>
+                    </div>
+                    <div class="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
+                        <span class="text-lg font-bold text-gray-900 dark:text-white" x-text="'$' + account.price_per_day + '/day'"></span>
+                        <button @click="rentAccount(account.id)" class="btn btn-primary text-sm">
+                            Rent Now
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </div>
+        <div x-show="availableAccounts.length === 0 && !loading" class="card p-12 text-center text-gray-500 dark:text-gray-400">
+            <p>No accounts available at the moment</p>
+        </div>
+    </div>
+
+    <!-- Your Leases -->
+    <div>
+        <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">Your Active Leases</h2>
+        <div x-show="activeLeases.length === 0" class="card p-12 text-center text-gray-500 dark:text-gray-400">
+            <svg class="w-12 h-12 mx-auto mb-4 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+            </svg>
+            <p>No active leases</p>
+        </div>
+        <div x-show="activeLeases.length > 0" class="space-y-4">
+            <template x-for="lease in activeLeases" :key="lease.id">
+                <div class="card p-6">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="font-semibold text-gray-900 dark:text-white" x-text="lease.account_name"></h3>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                Expires: <span x-text="formatDate(lease.expires_at)"></span>
+                            </p>
+                        </div>
+                        <button @click="extendLease(lease.id)" class="btn btn-secondary text-sm">
+                            Extend Lease
+                        </button>
+                    </div>
+                </div>
+            </template>
+        </div>
+    </div>
+</div>
+
+<script>
+function steamSlot() {
+    return {
+        availableAccounts: [],
+        activeLeases: [],
+        loading: true,
+
+        async init() {
+            await Promise.all([
+                this.loadAvailable(),
+                this.loadLeases()
+            ]);
+            this.loading = false;
+        },
+
+        async loadAvailable() {
+            try {
+                const response = await fetch('/api/v1/steamslot/accounts');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.availableAccounts = data.items || [];
+                }
+            } catch (err) {
+                console.error('Failed to load accounts:', err);
+            }
+        },
+
+        async loadLeases() {
+            try {
+                const response = await fetch('/api/v1/steamslot/leases');
+                if (response.ok) {
+                    const data = await response.json();
+                    this.activeLeases = data.items || [];
+                }
+            } catch (err) {
+                console.error('Failed to load leases:', err);
+            }
+        },
+
+        async rentAccount(accountId) {
+            notify('Redirecting to payment...', 'info');
+            // TODO: Implement payment flow
+        },
+
+        async extendLease(leaseId) {
+            notify('Redirecting to payment...', 'info');
+            // TODO: Implement extension flow
+        },
+
+        formatDate(dateStr) {
+            return new Date(dateStr).toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        }
+    };
+}
+</script>
+{% endblock %}
